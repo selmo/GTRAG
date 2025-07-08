@@ -1,0 +1,19 @@
+# --- Runtime ---
+fastapi==0.111.0
+uvicorn[standard]==0.29.0        # ASGI 서버
+python-multipart==0.0.9          # 파일 업로드
+pydantic==2.7.1                  # 데이터 모델
+sentence-transformers==2.7.0     # E5 임베딩
+qdrant-client                    # 벡터 DB
+unstructured==0.13.4             # 문서 추출
+Pillow==10.3.0                   # 이미지 처리
+requests==2.31.0                 # HTTP 클라이언트 (Ollama API용)
+
+# --- OCR (택1) ---
+# ① Tesseract 로컬 OCR
+pytesseract==0.3.10
+
+# --- Worker / 배치 ---
+celery==5.4.0
+redis==5.0.4                     # 기본 브로커
+numpy==1.26.4
