@@ -9,6 +9,8 @@ unstructured==0.13.4             # 문서 추출
 Pillow==10.3.0                   # 이미지 처리
 requests==2.31.0                 # HTTP 클라이언트 (Ollama API용)
 
+streamlit==1.32.0                # 웹 UI 프레임워크
+
 # --- OCR (택1) ---
 # ① Tesseract 로컬 OCR
 pytesseract==0.3.10
