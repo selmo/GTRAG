@@ -24,8 +24,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
-        'Get Help': 'https://github.com/your-org/gtrag/wiki',
-        'Report a bug': 'https://github.com/your-org/gtrag/issues',
+        'Get Help': 'https://github.com/selmo/gtrag/wiki',
+        'Report a bug': 'https://github.com/selmo/gtrag/issues',
         'About': """
         # GTOne RAG System
 

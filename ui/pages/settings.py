@@ -538,13 +538,13 @@ with tab5:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("📚 [사용자 가이드](https://github.com/your-org/gtrag/wiki)")
+        st.markdown("📚 [사용자 가이드](https://github.com/selmo/gtrag/wiki)")
     
     with col2:
-        st.markdown("🐛 [버그 리포트](https://github.com/your-org/gtrag/issues)")
+        st.markdown("🐛 [버그 리포트](https://github.com/selmo/gtrag/issues)")
     
     with col3:
-        st.markdown("💬 [커뮤니티](https://discord.gg/your-discord)")
+        st.markdown("💬 [커뮤니티](https://discord.gg/selmo)")
     
     # 연락처
     st.divider()
