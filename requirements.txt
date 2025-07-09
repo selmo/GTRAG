@@ -17,5 +17,5 @@ pytesseract==0.3.13
 
 # --- Worker / 배치 ---
 celery==5.5.3
-redis==8.0.3                     # 기본 브로커
+redis==6.2.0                     # 기본 브로커
 numpy==1.26.4
