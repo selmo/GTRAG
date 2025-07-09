@@ -27,10 +27,10 @@ fi
 # 포트가 여전히 사용 중인지 확인
 sleep 2
 
-# 8000 포트 확인
-if lsof -i:8000 > /dev/null 2>&1; then
-    echo "⚠️  포트 8000이 여전히 사용 중입니다. 강제 종료 중..."
-    lsof -ti:8000 | xargs kill -9 2>/dev/null
+# 18000 포트 확인
+if lsof -i:18000 > /dev/null 2>&1; then
+    echo "⚠️  포트 18000이 여전히 사용 중입니다. 강제 종료 중..."
+    lsof -ti:18000 | xargs kill -9 2>/dev/null
 fi
 
 # 8501 포트 확인

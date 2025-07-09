@@ -70,7 +70,7 @@ function check_status() {
     # 서비스 헬스 체크
     echo -e "\n${YELLOW}서비스 헬스 체크:${NC}"
 
-    if curl -s http://localhost:8000/v1/health > /dev/null 2>&1; then
+    if curl -s http://localhost:18000/v1/health > /dev/null 2>&1; then
         echo -e "API 서버: ${GREEN}✅ 정상${NC}"
     else
         echo -e "API 서버: ${RED}❌ 오류${NC}"

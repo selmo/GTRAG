@@ -24,7 +24,7 @@ class APIClient:
             base_url: API 서버 URL (기본값: 환경변수 또는 localhost)
             timeout: 요청 타임아웃 (초)
         """
-        self.base_url = base_url or os.getenv("API_BASE_URL", "http://localhost:8000")
+        self.base_url = base_url or os.getenv("API_BASE_URL", "http://localhost:18000")
         self.timeout = timeout
         self.session = requests.Session()
 

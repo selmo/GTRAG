@@ -44,7 +44,7 @@ chmod +x start.sh
 ## 🎯 주요 URL
 
 - 💬 **웹 UI**: http://localhost:8501
-- 📚 **API 문서**: http://localhost:8000/docs
+- 📚 **API 문서**: http://localhost:18000/docs
 - 🗄️ **Qdrant**: http://localhost:6333/dashboard
 
 ## 🛑 종료

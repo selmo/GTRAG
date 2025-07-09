@@ -28,7 +28,7 @@ CELERY_RESULT_BACKEND=redis://redis:6379/0
 # --- API Settings ---
 # API 서버 설정
 API_HOST=0.0.0.0
-API_PORT=8000
+API_PORT=18000
 API_RELOAD=true
 
 # --- Embedding Model ---

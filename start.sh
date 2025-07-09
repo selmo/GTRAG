@@ -62,7 +62,7 @@ for i in {1..12}; do
     echo -n "."
 
     # API 서버 확인
-    if curl -s http://localhost:8000/v1/health > /dev/null 2>&1; then
+    if curl -s http://localhost:18000/v1/health > /dev/null 2>&1; then
         api_ready=true
     else
         api_ready=false
@@ -87,7 +87,7 @@ echo ""
 echo "✅ 서비스 상태 확인 중..."
 
 # API 상태
-if curl -s http://localhost:8000/v1/health > /dev/null 2>&1; then
+if curl -s http://localhost:18000/v1/health > /dev/null 2>&1; then
     echo -e "${GREEN}✅ API 서버: 정상 작동${NC}"
 else
     echo -e "${RED}❌ API 서버: 연결 실패${NC}"
@@ -126,7 +126,7 @@ echo "🎉 GTOne RAG System이 준비되었습니다!"
 echo ""
 echo "📌 접속 정보:"
 echo "   - Web UI: http://localhost:8501"
-echo "   - API Docs: http://localhost:8000/docs"
+echo "   - API Docs: http://localhost:18000/docs"
 echo "   - Qdrant Dashboard: http://localhost:6333/dashboard"
 echo ""
 echo "💡 유용한 명령어:"
@@ -135,7 +135,7 @@ echo "   - 시스템 종료: docker compose down"
 echo "   - 데이터 포함 종료: docker compose down -v"
 echo "   - 상태 확인: docker compose ps"
 echo ""
-echo "📚 문서: https://github.com/your-org/gtrag"
+echo "📚 문서: https://github.com/selmo/gtrag"
 
 # 9. 브라우저 자동 열기 (선택적)
 if [ "$2" == "--open" ]; then

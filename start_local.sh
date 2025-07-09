@@ -50,7 +50,7 @@ echo "🚀 서비스 시작..."
 
 # FastAPI 서버 (백그라운드)
 echo "Starting API server..."
-nohup uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload > api.log 2>&1 &
+nohup uvicorn api.main:app --host 0.0.0.0 --port 18000 --reload > api.log 2>&1 &
 API_PID=$!
 echo "API Server PID: $API_PID"
 
@@ -81,7 +81,7 @@ echo "✅ 시스템 시작 완료!"
 echo ""
 echo "📌 접속 정보:"
 echo "   - Web UI: http://localhost:8501"
-echo "   - API Docs: http://localhost:8000/docs"
+echo "   - API Docs: http://localhost:18000/docs"
 echo "   - Qdrant Dashboard: http://localhost:6333/dashboard"
 echo ""
 echo "📋 로그 확인:"

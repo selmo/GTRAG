@@ -50,7 +50,7 @@ echo ""
 
 # 6. 포트 사용 확인
 echo -e "${YELLOW}[6. 포트 사용 상태]${NC}"
-for port in 8000 8501 6333 6379; do
+for port in 18000 8501 6333 6379; do
     if lsof -i:$port > /dev/null 2>&1; then
         echo -e "포트 $port: ${GREEN}사용 중${NC}"
         lsof -i:$port | grep LISTEN | head -1
@@ -62,13 +62,13 @@ echo ""
 
 # 7. API 연결 테스트
 echo -e "${YELLOW}[7. API 연결 테스트]${NC}"
-echo -n "API 서버 (localhost:8000): "
-if curl -s http://localhost:8000/docs > /dev/null 2>&1; then
+echo -n "API 서버 (localhost:18000): "
+if curl -s http://localhost:18000/docs > /dev/null 2>&1; then
     echo -e "${GREEN}연결 성공${NC}"
 else
     echo -e "${RED}연결 실패${NC}"
     echo "  컨테이너 내부에서 테스트:"
-    docker compose exec api curl -s http://localhost:8000/docs > /dev/null 2>&1 && echo -e "  ${GREEN}내부 연결 성공${NC}" || echo -e "  ${RED}내부 연결도 실패${NC}"
+    docker compose exec api curl -s http://localhost:18000/docs > /dev/null 2>&1 && echo -e "  ${GREEN}내부 연결 성공${NC}" || echo -e "  ${RED}내부 연결도 실패${NC}"
 fi
 
 echo -n "Streamlit UI (localhost:8501): "

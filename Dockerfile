@@ -65,11 +65,11 @@ RUN mkdir -p /tmp
 ENV PYTHONPATH=/app
 
 # 기본 포트 노출
-EXPOSE 8000 8501
+EXPOSE 18000 8501
 
 # 헬스체크 설정
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:18000/health || exit 1
 
 # 기본 명령어 (docker-compose에서 오버라이드됨)
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "18000"]

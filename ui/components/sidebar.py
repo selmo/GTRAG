@@ -178,7 +178,7 @@ def render_system_info():
         st.write("**Ctrl/Cmd + L**: 대화 초기화")
         
     with st.expander("유용한 링크"):
-        st.markdown("[📚 API 문서](http://localhost:8000/docs)")
+        st.markdown("[📚 API 문서](http://localhost:18000/docs)")
         st.markdown("[🗄️ Qdrant UI](http://localhost:6333/dashboard)")
         st.markdown("[📖 사용 가이드](https://github.com/your-org/gtrag)")
 

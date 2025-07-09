@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # API 기본 URL
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = "http://localhost:18000"
 
 # 색상 코드
 GREEN = '\033[0;32m'

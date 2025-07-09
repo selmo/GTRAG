@@ -1,8 +1,8 @@
 services:
   api:
     build: .
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-    ports: ["8000:8000"]
+    command: uvicorn api.main:app --host 0.0.0.0 --port 18000 --reload
+    ports: ["18000:18000"]
     env_file: .env
     environment:
       - PYTHONPATH=/app
@@ -49,7 +49,7 @@ services:
     env_file: .env
     environment:
       - PYTHONPATH=/app
-      - API_BASE_URL=http://api:8000
+      - API_BASE_URL=http://api:18000
       - STREAMLIT_SERVER_ENABLE_CORS=false
       - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
       - STREAMLIT_THEME_PRIMARY_COLOR="#FF6B6B"

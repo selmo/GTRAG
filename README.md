@@ -57,7 +57,7 @@ GTOne RAG System은 문서를 업로드하고, 자연어 질문을 통해 관련
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │   Streamlit UI  │────▶│   FastAPI Server │────▶│  Qdrant Vector  │
-│   (Port 8501)   │     │   (Port 8000)    │     │  (Port 6333)    │
+│   (Port 8501)   │     │   (Port 18000)   │     │  (Port 6333)    │
 └─────────────────┘     └──────────────────┘     └─────────────────┘
                                │                           │
                                ▼                           │
@@ -166,7 +166,7 @@ chmod +x start.sh
 
 #### 5. 접속
 - 웹 UI: http://localhost:8501
-- API 문서: http://localhost:8000/docs
+- API 문서: http://localhost:18000/docs
 - Qdrant Dashboard: http://localhost:6333/dashboard
 
 ### 로컬 실행
@@ -201,7 +201,7 @@ export OLLAMA_HOST=http://172.16.15.112:11434
 
 # 서비스 실행 (각각 별도 터미널)
 # API 서버
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn api.main:app --host 0.0.0.0 --port 18000 --reload
 
 # Celery Worker
 celery -A api.main.celery_app worker -l info
@@ -238,7 +238,7 @@ streamlit run streamlit_app.py
 POST /v1/documents
 Content-Type: multipart/form-data
 
-curl -X POST http://localhost:8000/v1/documents \
+curl -X POST http://localhost:18000/v1/documents \
   -F "file=@document.pdf"
 ```
 
@@ -246,24 +246,24 @@ curl -X POST http://localhost:8000/v1/documents \
 ```bash
 GET /v1/search?q={query}&top_k={number}
 
-curl "http://localhost:8000/v1/search?q=계약조건&top_k=3"
+curl "http://localhost:18000/v1/search?q=계약조건&top_k=3"
 ```
 
 #### RAG 답변 생성
 ```bash
 POST /v1/rag/answer?q={query}
 
-curl -X POST "http://localhost:8000/v1/rag/answer?q=주요 내용 요약"
+curl -X POST "http://localhost:18000/v1/rag/answer?q=주요 내용 요약"
 ```
 
 #### 시스템 상태
 ```bash
 GET /v1/health
 
-curl http://localhost:8000/v1/health
+curl http://localhost:18000/v1/health
 ```
 
-전체 API 문서는 http://localhost:8000/docs 에서 확인 가능합니다.
+전체 API 문서는 http://localhost:18000/docs 에서 확인 가능합니다.
 
 ## 환경 설정
 
@@ -298,7 +298,7 @@ ls -la Dockerfile
 **문제**: 포트 충돌
 ```bash
 # 사용 중인 포트 확인
-lsof -i:8000
+lsof -i:18000
 lsof -i:8501
 lsof -i:6333
 ```
