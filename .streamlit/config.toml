@@ -1,0 +1,61 @@
+# Streamlit 설정 파일
+# .streamlit/config.toml
+
+[theme]
+# 기본 색상 - GTOne 브랜드 색상
+primaryColor = "#FF6B6B"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+
+# 폰트
+font = "sans serif"
+
+[server]
+# 서버 설정
+port = 8501
+enableCORS = false
+enableXsrfProtection = false
+maxUploadSize = 50  # MB
+enableWebsocketCompression = true
+
+# 파일 감시
+fileWatcherType = "auto"
+folderWatchBlacklist = ['*.pyc', '__pycache__', '*.git*']
+
+[browser]
+# 브라우저 설정
+gatherUsageStats = false
+serverAddress = "0.0.0.0"
+
+[runner]
+# 실행 설정
+magicEnabled = true
+installTracer = false
+fixMatplotlib = true
+postScriptGC = true
+
+[client]
+# 클라이언트 설정
+caching = true
+displayEnabled = true
+showErrorDetails = true
+
+# 사이드바 설정
+showSidebarNavigation = true
+
+[logger]
+# 로깅 설정
+level = "info"
+messageFormat = "%(asctime)s %(name)-12s %(levelname)-8s %(message)s"
+
+[deprecation]
+# 경고 메시지
+showfileUploaderEncoding = false
+showImageFormat = false
+showPyplotGlobalUse = false
+
+[ui]
+# UI 설정
+hideTopBar = false
+hideSidebarNav = false
