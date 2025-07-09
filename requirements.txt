@@ -5,7 +5,7 @@ python-multipart==0.0.20         # 파일 업로드
 pydantic==2.11.7                 # 데이터 모델
 sentence-transformers==5.0.0     # E5 임베딩
 qdrant-client==1.14.3            # 벡터 DB
-unstructured==0.18.4             # 문서 추출
+unstructured==0.18.3             # 문서 추출
 Pillow==11.3.0                   # 이미지 처리
 requests==2.32.4                 # HTTP 클라이언트 (Ollama API용)
 
@@ -18,4 +18,4 @@ pytesseract==0.3.13
 # --- Worker / 배치 ---
 celery==5.5.3
 redis==8.0.3                     # 기본 브로커
-numpy==2.3.1
+numpy==1.26.4
