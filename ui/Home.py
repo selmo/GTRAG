@@ -12,7 +12,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from ui.utils.api_client import APIClient
 from ui.utils.session import SessionManager
 from ui.components.sidebar import render_sidebar
-from ui.components.chat import render_chat_history, handle_chat_input
+from ui.components.chatting import render_chat_history, handle_chat_input
 from ui.components.uploader import get_upload_summary
 
 # 페이지 설정 - 가장 먼저 호출되어야 함
@@ -109,7 +109,7 @@ with col2:
     st.subheader("2️⃣ 검색하기")
     st.write("키워드로 업로드된 문서를 검색하세요.")
     if st.button("🔍 검색 페이지로", use_container_width=True):
-        st.switch_page("pages/search.py")
+        st.switch_page("pages/searching.py")
 
 with col3:
     st.subheader("3️⃣ 질문하기")

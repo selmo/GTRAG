@@ -11,7 +11,7 @@ from datetime import datetime
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from ui.utils.api_client import APIClient
-from ui.components.search import render_search_interface
+from ui.components.searching import render_search_interface
 
 # 페이지 설정
 st.set_page_config(
