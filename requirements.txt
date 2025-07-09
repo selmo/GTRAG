@@ -1,21 +1,22 @@
 # --- Runtime ---
-fastapi==0.116.0
-uvicorn[standard]==0.35.0        # ASGI 서버
-python-multipart==0.0.20         # 파일 업로드
-pydantic==2.11.7                 # 데이터 모델
-sentence-transformers==5.0.0     # E5 임베딩
-qdrant-client==1.14.3            # 벡터 DB
-unstructured==0.18.3             # 문서 추출
-Pillow==11.3.0                   # 이미지 처리
-requests==2.32.4                 # HTTP 클라이언트 (Ollama API용)
+fastapi==0.115.0
+uvicorn[standard]==0.30.6       # ASGI 서버
+python-multipart==0.0.12        # 파일 업로드
+pydantic==2.8.2                 # 데이터 모델
+pydantic-core==2.20.1           # pydantic 의존성
+sentence-transformers==3.0.1    # E5 임베딩
+qdrant-client==1.10.1           # 벡터 DB
+unstructured==0.14.10           # 문서 추출
+Pillow==10.4.0                  # 이미지 처리
+requests==2.32.3                # HTTP 클라이언트 (Ollama API용)
 
-streamlit==1.46.1                # 웹 UI 프레임워크
+streamlit==1.37.1               # 웹 UI 프레임워크
 
 # --- OCR (택1) ---
 # ① Tesseract 로컬 OCR
-pytesseract==0.3.13
+pytesseract==0.3.10
 
 # --- Worker / 배치 ---
-celery==5.5.3
-redis==6.2.0                     # 기본 브로커
+celery==5.3.6
+redis==5.0.8                    # 기본 브로커
 numpy==1.26.4
