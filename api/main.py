@@ -3,7 +3,7 @@ from celery import Celery
 from ingestion.parser import parse_pdf
 from embedding.embedder import embed_texts
 from retriever.retriever import search
-import asyncio, qdrant_client
+import asyncio, qdrant_client, qdrant_client.http
 import os
 
 # FastAPI 앱 생성
@@ -65,9 +65,9 @@ async def startup_event():
         if "chunks" not in [c.name for c in collections]:
             qdrant.create_collection(
                 collection_name="chunks",
-                vectors_config=qdrant_client.models.VectorParams(
+                vectors_config=qdrant_client.http.models.VectorParams(
                     size=1024,  # E5-large 차원
-                    distance=qdrant_client.models.Distance.COSINE
+                    distance=qdrant_client.http.models.Distance.COSINE
                 )
             )
     except Exception as e:
