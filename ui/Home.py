@@ -103,13 +103,13 @@ with col1:
     st.subheader("1️⃣ 문서 업로드")
     st.write("사이드바에서 PDF, 이미지, 텍스트 문서를 업로드하세요.")
     if st.button("📤 문서 업로드 페이지로", use_container_width=True):
-        st.switch_page("pages/1_📄_Documents.py")
+        st.switch_page("pages/documents.py")
 
 with col2:
     st.subheader("2️⃣ 검색하기")
     st.write("키워드로 업로드된 문서를 검색하세요.")
     if st.button("🔍 검색 페이지로", use_container_width=True):
-        st.switch_page("pages/2_🔍_Search.py")
+        st.switch_page("pages/search.py")
 
 with col3:
     st.subheader("3️⃣ 질문하기")
