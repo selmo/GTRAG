@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     htop \
     vim \
     net-tools \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Qdrant 바이너리 다운로드 및 설치
@@ -101,7 +102,7 @@ chmod=0700
 supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
 
 [program:redis]
-command=redis-server --appendonly yes --dir /var/lib/redis
+command=redis-server --appendon ly yes --dir /var/lib/redis
 stdout_logfile=/var/log/supervisor/redis.log
 stderr_logfile=/var/log/supervisor/redis.log
 autorestart=true
