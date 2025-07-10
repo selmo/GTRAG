@@ -109,7 +109,7 @@ user=root
 priority=100
 
 [program:qdrant]
-command=qdrant --config-path /app/qdrant-config.yaml
+command=/bin/bash -c "rm -rf /var/lib/qdrant/storage/* && qdrant --config-path /app/qdrant-config.yaml"
 stdout_logfile=/var/log/supervisor/qdrant.log
 stderr_logfile=/var/log/supervisor/qdrant.log
 autorestart=true
