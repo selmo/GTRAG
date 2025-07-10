@@ -1,6 +1,10 @@
 services:
   gtrag-app:
-    build: .
+    # 루트 전체를 build context로, 개발용 Dockerfile은 현 위치의 것을 사용
+    build:
+      context: ../..
+      dockerfile: docker/development/Dockerfile
+
     ports: ["8501:8501"]  # 외부 접근은 오직 Streamlit을 통해서만
     env_file: ../../.env
     environment:
@@ -15,13 +19,13 @@ services:
       - STREAMLIT_THEME_SECONDARY_BACKGROUND_COLOR="#F0F2F6"
       - STREAMLIT_THEME_TEXT_COLOR="#262730"
     volumes:
-      - ./api:/app/api
-      - ./ingestion:/app/ingestion
-      - ./embedding:/app/embedding
-      - ./retriever:/app/retriever
-      - ./llm:/app/llm
-      - ./ui:/app/ui
-      - ./.streamlit:/app/.streamlit
+      - ../../api:/app/api
+      - ../../ingestion:/app/ingestion
+      - ../../embedding:/app/embedding
+      - ../../retriever:/app/retriever
+      - ../../llm:/app/llm
+      - ../../ui:/app/ui
+      - ../../.streamlit:/app/.streamlit
       - gtrag_data:/var/lib/qdrant/storage
       - redis_data:/var/lib/redis
     healthcheck:

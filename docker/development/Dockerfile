@@ -25,7 +25,7 @@ RUN wget -O /tmp/qdrant.tar.gz https://github.com/qdrant/qdrant/releases/downloa
 WORKDIR /app
 
 # 의존성 복사 및 설치
-COPY ../../requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 애플리케이션 코드 복사
