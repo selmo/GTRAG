@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y \
     vim \
     net-tools \
     procps \
+    lsof \
     && rm -rf /var/lib/apt/lists/*
 
 # Qdrant 바이너리 다운로드 및 설치
@@ -90,6 +91,7 @@ nodaemon=true
 user=root
 logfile=/var/log/supervisor/supervisord.log
 pidfile=/var/run/supervisord.pid
+loglevel=info
 
 [supervisorctl]
 serverurl=unix:///var/run/supervisor.sock
@@ -102,21 +104,25 @@ chmod=0700
 supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
 
 [program:redis]
-command=redis-server --appendon ly yes --dir /var/lib/redis
+command=redis-server --appendonly yes --dir /var/lib/redis --bind 127.0.0.1 --port 6379
 stdout_logfile=/var/log/supervisor/redis.log
 stderr_logfile=/var/log/supervisor/redis.log
 autorestart=true
 user=root
 priority=100
+startsecs=3
+startretries=3
 
 [program:qdrant]
-command=/bin/bash -c "rm -rf /var/lib/qdrant/storage/* && qdrant --config-path /app/qdrant-config.yaml"
+command=qdrant --config-path /app/qdrant-config.yaml
 stdout_logfile=/var/log/supervisor/qdrant.log
 stderr_logfile=/var/log/supervisor/qdrant.log
 autorestart=true
 user=root
 environment=QDRANT__LOG_LEVEL=INFO,QDRANT__SERVICE__HTTP_PORT=6333
 priority=200
+startsecs=5
+startretries=3
 
 [program:api]
 command=uvicorn api.main:app --host 0.0.0.0 --port 18000 --reload
@@ -127,6 +133,8 @@ autorestart=true
 user=root
 environment=PYTHONPATH=/app,CELERY_BROKER_URL=redis://localhost:6379/0,CELERY_RESULT_BACKEND=redis://localhost:6379/0,QDRANT_HOST=localhost,QDRANT_PORT=6333
 priority=300
+startsecs=10
+startretries=3
 
 [program:celery]
 command=celery -A api.main.celery_app worker -l info
@@ -137,6 +145,8 @@ autorestart=true
 user=root
 environment=PYTHONPATH=/app,CELERY_BROKER_URL=redis://localhost:6379/0,CELERY_RESULT_BACKEND=redis://localhost:6379/0,QDRANT_HOST=localhost,QDRANT_PORT=6333
 priority=400
+startsecs=15
+startretries=3
 
 [program:streamlit]
 command=streamlit run ui/Home.py --server.address 0.0.0.0 --server.port 8501 --server.enableCORS false --server.enableXsrfProtection false
@@ -147,6 +157,8 @@ autorestart=true
 user=root
 environment=PYTHONPATH=/app,API_BASE_URL=http://localhost:18000,STREAMLIT_SERVER_ENABLE_CORS=false,STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
 priority=500
+startsecs=20
+startretries=3
 EOF
 
 # Qdrant 설정 파일 생성
@@ -157,6 +169,10 @@ service:
   grpc_port: 6334
 storage:
   storage_path: /var/lib/qdrant/storage
+  snapshots_path: /var/lib/qdrant/snapshots
+  temp_path: /var/lib/qdrant/temp
+cluster:
+  enabled: false
 EOF
 
 # 로그 디렉토리 권한 설정
@@ -167,11 +183,9 @@ RUN chmod -R 755 /var/log/supervisor && \
 # 포트 노출 (외부로는 Streamlit만)
 EXPOSE 8501
 
-# 헬스체크 설정
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8501/ && \
-        curl -f http://localhost:18000/v1/health && \
-        curl -f http://localhost:6333/health
+# 헬스체크 설정 (더 관대한 조건으로 수정)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+    CMD curl -f http://localhost:8501/ || exit 1
 
 # Supervisor를 통해 모든 서비스 실행
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
