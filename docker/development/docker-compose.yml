@@ -2,7 +2,7 @@ services:
   gtrag-app:
     build: .
     ports: ["8501:8501"]  # 외부 접근은 오직 Streamlit을 통해서만
-    env_file: .env
+    env_file: ../../.env
     environment:
       - PYTHONPATH=/app
       - CELERY_BROKER_URL=redis://localhost:6379/0
