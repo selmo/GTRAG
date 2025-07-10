@@ -121,7 +121,7 @@ environment=PYTHONPATH=/app,API_BASE_URL=http://localhost:18000,STREAMLIT_SERVER
 EOF
 
 # Qdrant 설정 파일 생성
-RUN cat > /app/qdrant-config.yaml << 'EOF'
+RUN cat <<EOF > /app/qdrant-config.yaml
 log_level: INFO
 service:
   http_port: 6333
