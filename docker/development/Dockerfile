@@ -83,7 +83,7 @@ RUN touch \
     ui/pages/__init__.py
 
 # Supervisor 설정 파일 생성
-RUN cat <<EOF > /etc/supervisord.conf
+RUN cat <<EOF > /etc/supervisor/conf.d/supervisord.conf
 [supervisord]
 nodaemon=true
 user=root
@@ -163,4 +163,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
         curl -f http://localhost:6333/health
 
 # Supervisor를 통해 모든 서비스 실행
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
