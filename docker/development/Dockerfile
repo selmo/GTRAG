@@ -70,7 +70,7 @@ RUN touch \
     ui/pages/__init__.py
 
 # Supervisor 설정 파일 생성
-RUN cat > /etc/supervisor/conf.d/supervisord.conf << 'EOF'
+RUN cat <<EOF > /etc/supervisor/conf.d/supervisord.conf
 [supervisord]
 nodaemon=true
 user=root
