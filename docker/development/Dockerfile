@@ -90,6 +90,16 @@ user=root
 logfile=/var/log/supervisor/supervisord.log
 pidfile=/var/run/supervisord.pid
 
+[supervisorctl]
+serverurl=unix:///var/run/supervisor.sock
+
+[unix_http_server]
+file=/var/run/supervisor.sock
+chmod=0700
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
 [program:redis]
 command=redis-server --appendonly yes --dir /var/lib/redis
 stdout_logfile=/var/log/supervisor/redis.log
