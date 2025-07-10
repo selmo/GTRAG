@@ -1,6 +1,15 @@
 FROM python:3.11-slim
 
-# 시스템 패키지 설치 (OCR, 문서 처리용 + Redis + 기타)
+# 환경변수 기본값 설정 (먼저 설정)
+ENV PYTHONPATH=/app
+ENV OLLAMA_HOST=http://172.16.15.112:11434
+ENV QDRANT_HOST=localhost
+ENV QDRANT_PORT=6333
+ENV CELERY_BROKER_URL=redis://localhost:6379/0
+ENV CELERY_RESULT_BACKEND=redis://localhost:6379/0
+ENV API_BASE_URL=http://localhost:18000
+
+# 시스템 패키지 설치 (한 번에 모든 패키지 설치)
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-kor \
@@ -13,6 +22,9 @@ RUN apt-get update && apt-get install -y \
     redis-server \
     supervisor \
     wget \
+    htop \
+    vim \
+    net-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Qdrant 바이너리 다운로드 및 설치
@@ -44,6 +56,7 @@ RUN mkdir -p \
     ui/utils \
     .streamlit \
     /var/lib/qdrant/storage \
+    /var/lib/redis \
     /var/log/supervisor
 
 # 파일들을 올바른 위치로 이동 (이미 정리되어 있지 않은 경우)
@@ -83,6 +96,7 @@ stdout_logfile=/var/log/supervisor/redis.log
 stderr_logfile=/var/log/supervisor/redis.log
 autorestart=true
 user=root
+priority=100
 
 [program:qdrant]
 command=qdrant --config-path /app/qdrant-config.yaml
@@ -91,15 +105,7 @@ stderr_logfile=/var/log/supervisor/qdrant.log
 autorestart=true
 user=root
 environment=QDRANT__LOG_LEVEL=INFO,QDRANT__SERVICE__HTTP_PORT=6333
-
-[program:celery]
-command=celery -A api.main.celery_app worker -l info
-directory=/app
-stdout_logfile=/var/log/supervisor/celery.log
-stderr_logfile=/var/log/supervisor/celery.log
-autorestart=true
-user=root
-environment=PYTHONPATH=/app,CELERY_BROKER_URL=redis://localhost:6379/0,CELERY_RESULT_BACKEND=redis://localhost:6379/0,QDRANT_HOST=localhost,QDRANT_PORT=6333
+priority=200
 
 [program:api]
 command=uvicorn api.main:app --host 0.0.0.0 --port 18000 --reload
@@ -109,6 +115,17 @@ stderr_logfile=/var/log/supervisor/api.log
 autorestart=true
 user=root
 environment=PYTHONPATH=/app,CELERY_BROKER_URL=redis://localhost:6379/0,CELERY_RESULT_BACKEND=redis://localhost:6379/0,QDRANT_HOST=localhost,QDRANT_PORT=6333
+priority=300
+
+[program:celery]
+command=celery -A api.main.celery_app worker -l info
+directory=/app
+stdout_logfile=/var/log/supervisor/celery.log
+stderr_logfile=/var/log/supervisor/celery.log
+autorestart=true
+user=root
+environment=PYTHONPATH=/app,CELERY_BROKER_URL=redis://localhost:6379/0,CELERY_RESULT_BACKEND=redis://localhost:6379/0,QDRANT_HOST=localhost,QDRANT_PORT=6333
+priority=400
 
 [program:streamlit]
 command=streamlit run ui/Home.py --server.address 0.0.0.0 --server.port 8501 --server.enableCORS false --server.enableXsrfProtection false
@@ -118,6 +135,7 @@ stderr_logfile=/var/log/supervisor/streamlit.log
 autorestart=true
 user=root
 environment=PYTHONPATH=/app,API_BASE_URL=http://localhost:18000,STREAMLIT_SERVER_ENABLE_CORS=false,STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
+priority=500
 EOF
 
 # Qdrant 설정 파일 생성
@@ -130,14 +148,19 @@ storage:
   storage_path: /var/lib/qdrant/storage
 EOF
 
-# 임시 디렉토리 생성
-RUN mkdir -p /tmp /var/lib/redis
-
-# Python 경로 설정
-ENV PYTHONPATH=/app
+# 로그 디렉토리 권한 설정
+RUN chmod -R 755 /var/log/supervisor && \
+    chmod -R 755 /var/lib/qdrant && \
+    chmod -R 755 /var/lib/redis
 
 # 포트 노출 (외부로는 Streamlit만)
 EXPOSE 8501
+
+# 헬스체크 설정
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8501/ && \
+        curl -f http://localhost:18000/v1/health && \
+        curl -f http://localhost:6333/health
 
 # Supervisor를 통해 모든 서비스 실행
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

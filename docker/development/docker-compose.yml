@@ -1,24 +1,28 @@
 services:
-  gtrag-app:
-    # 루트 전체를 build context로, 개발용 Dockerfile은 현 위치의 것을 사용
+  gtrag-dev:
     build:
       context: ../..
       dockerfile: docker/development/Dockerfile
-
-    ports: ["8501:8501"]  # 외부 접근은 오직 Streamlit을 통해서만
+    ports:
+      - "8501:8501"  # Streamlit UI (외부 접근)
+      # 내부 서비스들은 localhost로 통신
     env_file: ../../.env
     environment:
       - PYTHONPATH=/app
+      # 단일 컨테이너 내부 통신용 설정
       - CELERY_BROKER_URL=redis://localhost:6379/0
       - CELERY_RESULT_BACKEND=redis://localhost:6379/0
-      - OLLAMA_HOST=http://172.16.15.112:11434
       - QDRANT_HOST=localhost
       - QDRANT_PORT=6333
+      # 외부 Ollama 서버 (기존 유지)
+      - OLLAMA_HOST=http://172.16.15.112:11434
+      # Streamlit 설정
       - STREAMLIT_THEME_PRIMARY_COLOR="#FF6B6B"
       - STREAMLIT_THEME_BACKGROUND_COLOR="#FFFFFF"
       - STREAMLIT_THEME_SECONDARY_BACKGROUND_COLOR="#F0F2F6"
       - STREAMLIT_THEME_TEXT_COLOR="#262730"
     volumes:
+      # 개발시 코드 변경사항 실시간 반영
       - ../../api:/app/api
       - ../../ingestion:/app/ingestion
       - ../../embedding:/app/embedding
@@ -26,8 +30,9 @@ services:
       - ../../llm:/app/llm
       - ../../ui:/app/ui
       - ../../.streamlit:/app/.streamlit
-      - gtrag_data:/var/lib/qdrant/storage
-      - redis_data:/var/lib/redis
+      # 데이터 영구 보존
+      - gtrag_dev_data:/var/lib/qdrant/storage
+      - gtrag_dev_redis:/var/lib/redis
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/"]
       interval: 30s
@@ -36,7 +41,7 @@ services:
       start_period: 60s
 
 volumes:
-  gtrag_data:
+  gtrag_dev_data:
     driver: local
-  redis_data:
+  gtrag_dev_redis:
     driver: local
