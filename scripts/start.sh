@@ -45,12 +45,12 @@ fi
 # 4. 기존 컨테이너 정리 (선택적)
 if [ "$1" == "--clean" ]; then
     echo "🧹 기존 컨테이너 정리 중..."
-    docker compose down -v
+    docker compose -f docker/production/docker-compose.yml down -v
 fi
 
 # 5. Docker Compose 빌드 및 시작
 echo "🐳 Docker 컨테이너 빌드 및 시작 중..."
-docker compose up --build -d
+docker compose -f docker/production/docker-compose.yml up --build -d
 
 # 6. 서비스 준비 대기
 echo "⏳ 서비스 준비 중..."
@@ -131,9 +131,9 @@ echo "   - Qdrant Dashboard: http://localhost:6333/dashboard"
 echo ""
 echo "💡 유용한 명령어:"
 echo "   - 로그 확인: docker compose logs -f [서비스명]"
-echo "   - 시스템 종료: docker compose down"
-echo "   - 데이터 포함 종료: docker compose down -v"
-echo "   - 상태 확인: docker compose ps"
+echo "   - 시스템 종료: docker compose -f docker/development/docker-compose.yml down"
+echo "   - 데이터 포함 종료: docker compose -f docker/development/docker-compose.yml down -v"
+echo "   - 상태 확인: docker compose -f docker/development/docker-compose.yml ps"
 echo ""
 echo "📚 문서: https://github.com/selmo/gtrag"
 

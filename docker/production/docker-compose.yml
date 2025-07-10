@@ -1,9 +1,9 @@
 services:
   api:
-    build: .
+    build: ../..
     command: uvicorn api.main:app --host 0.0.0.0 --port 18000 --reload
     ports: ["18000:18000"]
-    env_file: .env
+    env_file: ../../.env
     environment:
       - PYTHONPATH=/app
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -22,9 +22,9 @@ services:
       - gtrag-network
 
   worker:
-    build: .
+    build: ../..
     command: celery -A api.main.celery_app worker -l info
-    env_file: .env
+    env_file: ../../.env
     environment:
       - PYTHONPATH=/app
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -43,10 +43,10 @@ services:
       - gtrag-network
 
   streamlit:
-    build: .
+    build: ../..
     command: streamlit run ui/Home.py --server.address 0.0.0.0 --server.port 8501 --server.enableCORS false --server.enableXsrfProtection false
     ports: ["8501:8501"]
-    env_file: .env
+    env_file: ../../.env
     environment:
       - PYTHONPATH=/app
       - API_BASE_URL=http://api:18000

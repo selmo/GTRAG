@@ -16,11 +16,11 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # 의존성 복사 및 설치
-COPY requirements.txt .
+COPY ../../requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 애플리케이션 코드 복사
-COPY . .
+COPY ../.. .
 
 # 디렉토리 구조 생성
 RUN mkdir -p \
