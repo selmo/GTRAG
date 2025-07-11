@@ -21,6 +21,17 @@ echo -e "\n${BLUE}🔍 시스템 아키텍처 감지:${NC}"
 HOST_ARCH=$(uname -m)
 echo "   Host Architecture: $HOST_ARCH"
 
+OS_NAME=$(uname -s)                            # ← 이 줄을 추가 (macOS 감지용)
+echo "   OS Name: $OS_NAME"
+
+# 1.1. reload 옵션 자동 결정 (Darwin/macOS면 제거, 그 외는 유지)
+if [[ "$OS_NAME" == "Darwin" ]]; then
+  UVICORN_FLAGS="--host 0.0.0.0 --port 18000"
+else
+  UVICORN_FLAGS="--host 0.0.0.0 --port 18000 --reload"
+fi
+export UVICORN_FLAGS
+
 # Apple Silicon 감지 및 배포 모드 결정
 if [[ $(uname -m) == "arm64" ]] && [[ $(uname -s) == "Darwin" ]]; then
     echo "   🍎 Apple Silicon Mac 감지됨"
