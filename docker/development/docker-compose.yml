@@ -39,10 +39,6 @@ services:
       - QDRANT_HOST=${QDRANT_HOST:-localhost}
       - QDRANT_PORT=6333
       - OLLAMA_HOST=http://172.16.15.112:11434
-      - STREAMLIT_THEME_PRIMARY_COLOR="#FF6B6B"
-      - STREAMLIT_THEME_BACKGROUND_COLOR="#FFFFFF"
-      - STREAMLIT_THEME_SECONDARY_BACKGROUND_COLOR="#F0F2F6"
-      - STREAMLIT_THEME_TEXT_COLOR="#262730"
     volumes:
       # 개발시 코드 변경사항 실시간 반영
       - ../../api:/app/api
