@@ -303,7 +303,7 @@ else
 fi
 
 echo -e "   🐚 컨테이너 접속: docker compose -f docker/development/docker-compose.yml exec gtrag-dev /bin/bash"
-echo -e "   🏥 헬스체크: docker compose -f docker/development/docker-compose.yml exec gtrag-dev /app/healthcheck.sh"
+#echo -e "   🏥 헬스체크: docker compose -f docker/development/docker-compose.yml exec gtrag-dev /app/healthcheck.sh"
 
 if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
     echo -e "   🛑 서비스 종료: docker compose -f docker/development/docker-compose.yml --profile arm64 down"
