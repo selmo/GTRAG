@@ -1,80 +1,28 @@
+# 주의: 이 파일은 더 이상 사용되지 않습니다.
+# 아키텍처별로 분리된 compose 파일을 사용하세요:
+# - ARM64: docker/development/docker-compose-arm64.yml
+# - x86_64: docker/development/docker-compose-x86_64.yml
+#
+# 사용법: scripts/dev-start.sh
+
+version: '3.8'
+
 services:
-  # ARM64에서만 실행되는 별도 Qdrant 컨테이너
-  qdrant:
-    image: qdrant/qdrant:v1.9.3
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    environment:
-      - QDRANT__LOG_LEVEL=INFO
-      - QDRANT__SERVICE__HTTP_PORT=6333
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    restart: unless-stopped
-    # ARM64에서만 실행
+  # 이 서비스는 더 이상 사용되지 않습니다
+  deprecated-service:
+    image: alpine:latest
+    command: |
+      sh -c "
+        echo '⚠️  이 docker-compose.yml 파일은 더 이상 사용되지 않습니다.'
+        echo '아키텍처별로 분리된 compose 파일을 사용하세요:'
+        echo ''
+        echo '🍎 ARM64 (Apple Silicon): docker/development/docker-compose-arm64.yml'
+        echo '🖥️  x86_64 (Intel): docker/development/docker-compose-x86_64.yml'
+        echo ''
+        echo '자동 실행: scripts/dev-start.sh'
+        echo ''
+        sleep 10
+        exit 1
+      "
     profiles:
-      - arm64
-
-  # 메인 GTOne RAG 앱
-  gtrag-dev:
-    build:
-      context: ../..
-      dockerfile: docker/development/Dockerfile
-      args:
-        - TARGETARCH=${TARGETARCH:-amd64}
-    ports:
-      - "8501:8501"
-    env_file: ../../.env
-    environment:
-      - PYTHONPATH=/app
-      - CELERY_BROKER_URL=redis://localhost:6379/0
-      - CELERY_RESULT_BACKEND=redis://localhost:6379/0
-      # 아키텍처별 Qdrant 호스트 설정
-      - QDRANT_HOST=${QDRANT_HOST:-qdrant}
-      - QDRANT_PORT=6333
-      - OLLAMA_HOST=http://172.16.15.112:11434
-    volumes:
-      # 개발시 코드 변경사항 실시간 반영
-      - ../../api:/app/api
-      - ../../ingestion:/app/ingestion
-      - ../../embedding:/app/embedding
-      - ../../retriever:/app/retriever
-      - ../../llm:/app/llm
-      - ../../ui:/app/ui
-      - ../../.streamlit:/app/.streamlit
-      # 아키텍처별 볼륨 설정
-      - gtrag_dev_redis:/var/lib/redis
-      - ${QDRANT_VOLUME_MOUNT:-gtrag_dev_qdrant:/var/lib/qdrant/storage}
-    command: >
-      sh -c "uvicorn api.main:app $UVICORN_FLAGS & streamlit run Home.py --server.port 8501"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-    restart: unless-stopped
-    # ARM64에서는 외부 qdrant에 의존
-    depends_on:
-      qdrant:
-        condition: service_healthy
-    profiles:
-      - arm64  # depends_on 항목이 arm64 프로필에서만 활성화됨
-
-volumes:
-  qdrant_data:
-    driver: local
-  gtrag_dev_redis:
-    driver: local
-  gtrag_dev_qdrant:
-    driver: local
-
-networks:
-  default:
-    name: gtrag-dev-network
+      - deprecated

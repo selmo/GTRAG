@@ -1,0 +1,55 @@
+# Docker Compose for x86_64 (단일 컨테이너 통합)
+services:
+  # 메인 GTOne RAG 앱 (x86_64용 - 모든 서비스 통합)
+  gtrag-dev:
+    build:
+      context: ../..
+      dockerfile: docker/development/Dockerfile.x86_64
+      args:
+        - TARGETARCH=amd64
+    ports:
+      - "8501:8501"    # Streamlit
+      - "18000:18000"  # FastAPI
+      - "6333:6333"    # Qdrant
+      - "6334:6334"    # Qdrant gRPC
+    env_file: ../../.env
+    environment:
+      - PYTHONPATH=/app
+      - CELERY_BROKER_URL=redis://localhost:6379/0
+      - CELERY_RESULT_BACKEND=redis://localhost:6379/0
+      - QDRANT_HOST=localhost
+      - QDRANT_PORT=6333
+      - OLLAMA_HOST=http://172.16.15.112:11434
+      - UVICORN_FLAGS=${UVICORN_FLAGS}
+    volumes:
+      # 개발시 코드 변경사항 실시간 반영
+      - ../../api:/app/api
+      - ../../ingestion:/app/ingestion
+      - ../../embedding:/app/embedding
+      - ../../retriever:/app/retriever
+      - ../../llm:/app/llm
+      - ../../ui:/app/ui
+      - ../../.streamlit:/app/.streamlit
+      # 데이터 볼륨
+      - gtrag_dev_redis:/var/lib/redis
+      - gtrag_dev_qdrant:/var/lib/qdrant/storage
+    healthcheck:
+      test: |
+        curl -f http://localhost:8501/ && 
+        curl -f http://localhost:18000/v1/health && 
+        curl -f http://localhost:6333/health
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+
+volumes:
+  gtrag_dev_redis:
+    driver: local
+  gtrag_dev_qdrant:
+    driver: local
+
+networks:
+  default:
+    name: gtrag-dev-network

@@ -11,6 +11,7 @@ if [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
     echo "  --open          시작 후 브라우저 자동 열기"
     echo "  --reload        강제로 --reload 옵션 활성화"
     echo "  --no-reload     강제로 --reload 옵션 비활성화"
+    echo "  --arch=ARCH     아키텍처 강제 지정 (x86_64, arm64)"
     echo "  --help, -h      이 도움말 표시"
     echo ""
     echo "환경변수:"
@@ -20,19 +21,31 @@ if [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
     echo "  $0                      # 기본 실행 (아키텍처별 자동 설정)"
     echo "  $0 --clean --open       # 정리 후 시작, 브라우저 열기"
     echo "  $0 --reload             # 강제로 --reload 활성화"
+    echo "  $0 --arch=x86_64        # x86_64 모드 강제 실행"
     echo "  UVICORN_FLAGS=\"--host 0.0.0.0 --port 18000 --workers 4\" $0"
     exit 0
 fi
 
 # 명령행 옵션 처리
 FORCE_RELOAD=""
-if [ "$1" == "--reload" ] || [ "$2" == "--reload" ] || [ "$3" == "--reload" ]; then
-    FORCE_RELOAD="yes"
-    echo "🔄 강제로 --reload 옵션 활성화됨"
-elif [ "$1" == "--no-reload" ] || [ "$2" == "--no-reload" ] || [ "$3" == "--no-reload" ]; then
-    FORCE_RELOAD="no"
-    echo "🚫 강제로 --reload 옵션 비활성화됨"
-fi
+FORCE_ARCH=""
+
+for arg in "$@"; do
+    case $arg in
+        --reload)
+            FORCE_RELOAD="yes"
+            echo "🔄 강제로 --reload 옵션 활성화됨"
+            ;;
+        --no-reload)
+            FORCE_RELOAD="no"
+            echo "🚫 강제로 --reload 옵션 비활성화됨"
+            ;;
+        --arch=*)
+            FORCE_ARCH="${arg#*=}"
+            echo "🎯 아키텍처 강제 지정: $FORCE_ARCH"
+            ;;
+    esac
+done
 
 # 색상 정의
 RED='\033[0;31m'
@@ -125,7 +138,50 @@ else
     exit 1
 fi
 
-# 3. 아키텍처별 UVICORN_FLAGS 설정
+# 3. 시스템 아키텍처 감지
+echo -e "\n${BLUE}🔍 시스템 아키텍처 감지:${NC}"
+HOST_ARCH=$(uname -m)
+OS_NAME=$(uname -s)
+echo "   Host Architecture: $HOST_ARCH"
+echo "   OS Name: $OS_NAME"
+
+# 아키텍처 결정 (강제 지정이 있으면 우선)
+if [ -n "$FORCE_ARCH" ]; then
+    echo "   🎯 강제 지정된 아키텍처: $FORCE_ARCH"
+    DEPLOYMENT_MODE="$FORCE_ARCH"
+elif [[ $(uname -m) == "arm64" ]] && [[ $(uname -s) == "Darwin" ]]; then
+    echo "   🍎 Apple Silicon Mac 감지됨"
+    DEPLOYMENT_MODE="arm64"
+elif [[ $(uname -m) == "x86_64" ]]; then
+    echo "   🖥️  x86_64 시스템 감지됨"
+    DEPLOYMENT_MODE="x86_64"
+else
+    echo "   ❓ 알 수 없는 아키텍처: $HOST_ARCH (ARM64 모드로 처리)"
+    DEPLOYMENT_MODE="arm64"
+fi
+
+# 아키텍처별 설정
+if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
+    COMPOSE_FILE="docker/development/docker-compose-arm64.yml"
+    DOCKERFILE_SUFFIX="arm64"
+    export DOCKER_DEFAULT_PLATFORM=linux/arm64
+    export TARGETARCH=arm64
+    echo "   🍎 ARM64 모드: 분리된 컨테이너 (Qdrant + 메인앱)"
+elif [ "$DEPLOYMENT_MODE" = "x86_64" ]; then
+    COMPOSE_FILE="docker/development/docker-compose-x86_64.yml"
+    DOCKERFILE_SUFFIX="x86_64"
+    export DOCKER_DEFAULT_PLATFORM=linux/amd64
+    export TARGETARCH=amd64
+    echo "   🖥️  x86_64 모드: 단일 컨테이너 (통합)"
+else
+    echo -e "${RED}❌ 지원하지 않는 아키텍처: $DEPLOYMENT_MODE${NC}"
+    exit 1
+fi
+
+echo "   📋 사용할 Compose 파일: $COMPOSE_FILE"
+echo "   🐳 Dockerfile: Dockerfile.$DOCKERFILE_SUFFIX"
+
+# 4. Uvicorn 설정
 echo -e "\n${BLUE}⚙️ Uvicorn 설정 구성:${NC}"
 
 # 기본값: --reload 없음 (안정성 우선)
@@ -144,8 +200,8 @@ else
         echo "   🚫 강제로 --reload 비활성화"
     else
         # 아키텍처별 자동 설정
-        if [[ $(uname -m) == "arm64" ]] && [[ $(uname -s) == "Darwin" ]]; then
-            # ARM64 (Apple Silicon): --reload 제외 (파일 시스템 감시 문제)
+        if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
+            # ARM64: --reload 제외 (파일 시스템 감시 문제)
             export UVICORN_FLAGS="$UVICORN_BASE"
             echo "   🍎 ARM64 감지: --reload 제외 (안정성 우선)"
             ARCH_NOTE="ARM64 (파일 시스템 감시 문제로 --reload 비활성화)"
@@ -184,37 +240,6 @@ echo "   • 수동 설정: export UVICORN_FLAGS=\"원하는_옵션\""
 echo "   • 강제 재로드: $0 --reload"
 echo "   • 강제 비활성화: $0 --no-reload"
 
-# 4. 시스템 아키텍처 감지
-echo -e "\n${BLUE}🔍 시스템 아키텍처 감지:${NC}"
-HOST_ARCH=$(uname -m)
-OS_NAME=$(uname -s)
-echo "   Host Architecture: $HOST_ARCH"
-echo "   OS Name: $OS_NAME"
-
-# Apple Silicon 감지 및 배포 모드 결정
-if [[ $(uname -m) == "arm64" ]] && [[ $(uname -s) == "Darwin" ]]; then
-    echo "   🍎 Apple Silicon Mac 감지됨"
-    DEPLOYMENT_MODE="arm64"
-    COMPOSE_PROFILES="arm64"
-    export DOCKER_DEFAULT_PLATFORM=linux/arm64
-    export TARGETARCH=arm64
-elif [[ $(uname -m) == "x86_64" ]]; then
-    echo "   🖥️  x86_64 시스템 감지됨"
-    DEPLOYMENT_MODE="x86_64"
-    COMPOSE_PROFILES=""
-    export DOCKER_DEFAULT_PLATFORM=linux/amd64
-    export TARGETARCH=amd64
-else
-    echo "   ❓ 알 수 없는 아키텍처: $HOST_ARCH (ARM64 모드로 처리)"
-    DEPLOYMENT_MODE="arm64"
-    COMPOSE_PROFILES="arm64"
-    export DOCKER_DEFAULT_PLATFORM=linux/arm64
-    export TARGETARCH=arm64
-fi
-
-echo "   🎯 배포 모드: $DEPLOYMENT_MODE"
-echo "   📋 Docker 프로파일: ${COMPOSE_PROFILES:-"기본값"}"
-
 # 5. Docker 환경 확인
 echo -e "\n${BLUE}🐳 Docker 환경 확인:${NC}"
 if ! command -v docker &> /dev/null; then
@@ -242,13 +267,9 @@ if [ -n "$OLLAMA_HOST" ]; then
 fi
 
 # 7. 기존 컨테이너 정리 (선택적)
-if [ "$1" == "--clean" ]; then
+if [[ "$*" == *"--clean"* ]]; then
     echo -e "\n${YELLOW}🧹 기존 컨테이너 정리 중...${NC}"
-    if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
-        docker compose -f docker/development/docker-compose.yml --profile arm64 down -v
-    else
-        docker compose -f docker/development/docker-compose.yml down -v
-    fi
+    docker compose -f "$COMPOSE_FILE" down -v
     docker system prune -f
 fi
 
@@ -270,11 +291,37 @@ check_port() {
     fi
 }
 
-check_port 6333 "Qdrant"
 check_port 8501 "Streamlit"
 check_port 18000 "API"
 
-# 9. 아키텍처별 빌드 및 시작
+if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
+    check_port 6333 "Qdrant"
+else
+    check_port 6333 "Qdrant (통합)"
+fi
+
+# 9. 파일 존재 확인
+echo -e "\n${BLUE}📁 필수 파일 확인:${NC}"
+required_files=(
+    "$COMPOSE_FILE"
+    "docker/development/Dockerfile.$DOCKERFILE_SUFFIX"
+    "docker/development/supervisord-$DOCKERFILE_SUFFIX.conf"
+)
+
+if [ "$DEPLOYMENT_MODE" = "x86_64" ]; then
+    required_files+=("docker/development/qdrant-config.yaml")
+fi
+
+for file in "${required_files[@]}"; do
+    if [ -f "$file" ]; then
+        echo -e "${GREEN}✅ $file${NC}"
+    else
+        echo -e "${RED}❌ $file 파일이 없습니다.${NC}"
+        exit 1
+    fi
+done
+
+# 10. 아키텍처별 빌드 및 시작
 echo -e "\n${BLUE}🚀 시스템 시작 ($DEPLOYMENT_MODE 모드):${NC}"
 
 if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
@@ -282,7 +329,7 @@ if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
 
     # Qdrant 먼저 시작
     echo "   1. Qdrant 컨테이너 시작..."
-    docker compose -f docker/development/docker-compose.yml --profile arm64 up -d qdrant
+    docker compose -f "$COMPOSE_FILE" up -d qdrant
 
     # Qdrant 준비 대기
     echo "   2. Qdrant 준비 대기..."
@@ -295,21 +342,22 @@ if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
         sleep 2
         if [ $i -eq 30 ]; then
             echo -e "\n   ${YELLOW}⚠️ Qdrant 시작이 지연되고 있습니다. 로그를 확인하세요.${NC}"
-            docker compose -f docker/development/docker-compose.yml logs qdrant --tail=10
+            docker compose -f "$COMPOSE_FILE" logs qdrant --tail=10
         fi
     done
 
     # 메인 앱 시작
     echo "   3. 메인 앱 빌드 및 시작..."
-    docker compose -f docker/development/docker-compose.yml build gtrag-dev
-    docker compose -f docker/development/docker-compose.yml up -d gtrag-dev
+    docker compose -f "$COMPOSE_FILE" build gtrag-dev
+    docker compose -f "$COMPOSE_FILE" up -d gtrag-dev
 
 elif [ "$DEPLOYMENT_MODE" = "x86_64" ]; then
     echo "   🖥️  x86_64 모드: 단일 컨테이너 통합"
-    docker compose -f docker/development/docker-compose.yml up --build -d gtrag-dev
+    echo "   1. 통합 컨테이너 빌드 및 시작..."
+    docker compose -f "$COMPOSE_FILE" up --build -d gtrag-dev
 fi
 
-# 10. 서비스 준비 대기
+# 11. 서비스 준비 대기
 echo -e "\n${BLUE}⏳ 서비스 준비 중...${NC}"
 echo -n "대기 중"
 
@@ -321,39 +369,51 @@ while [ $attempt -lt $max_attempts ]; do
     echo -n "."
     attempt=$((attempt + 1))
 
+    # 서비스 상태 확인
+    streamlit_ready=false
+    api_ready=false
+    qdrant_ready=false
+
     # Streamlit 확인
     if curl -s http://localhost:8501 > /dev/null 2>&1; then
-        if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
-            if curl -s http://localhost:6333/health > /dev/null 2>&1; then
-                echo -e "\n${GREEN}✅ 모든 서비스가 준비되었습니다!${NC}"
-                break
-            fi
-        else
-            echo -e "\n${GREEN}✅ 서비스가 준비되었습니다!${NC}"
-            break
-        fi
+        streamlit_ready=true
+    fi
+
+    # API 확인
+    if curl -s http://localhost:18000/v1/health > /dev/null 2>&1; then
+        api_ready=true
+    fi
+
+    # Qdrant 확인
+    if curl -s http://localhost:6333/health > /dev/null 2>&1; then
+        qdrant_ready=true
+    fi
+
+    # 모든 서비스 준비 완료 확인
+    if [ "$streamlit_ready" = true ] && [ "$api_ready" = true ] && [ "$qdrant_ready" = true ]; then
+        echo -e "\n${GREEN}✅ 모든 서비스가 준비되었습니다!${NC}"
+        break
     fi
 
     if [ $((attempt % 12)) -eq 0 ]; then
         echo -e "\n   진행 중... ($((attempt * 5))초 경과)"
-        if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
-            docker compose -f docker/development/docker-compose.yml --profile arm64 ps
-        else
-            docker compose -f docker/development/docker-compose.yml ps
-        fi
+        echo "   상태: Streamlit($streamlit_ready) | API($api_ready) | Qdrant($qdrant_ready)"
+        docker compose -f "$COMPOSE_FILE" ps
         echo -n "   계속 대기 중"
     fi
 done
 
-# 11. 최종 상태 확인
-echo -e "\n${BLUE}📊 최종 서비스 상태:${NC}"
-if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
-    docker compose -f docker/development/docker-compose.yml --profile arm64 ps
-else
-    docker compose -f docker/development/docker-compose.yml ps
+if [ $attempt -eq $max_attempts ]; then
+    echo -e "\n${YELLOW}⚠️ 서비스 시작이 예상보다 오래 걸리고 있습니다.${NC}"
+    echo "로그를 확인해주세요:"
+    docker compose -f "$COMPOSE_FILE" logs --tail=20
 fi
 
-# 12. 접속 정보 표시
+# 12. 최종 상태 확인
+echo -e "\n${BLUE}📊 최종 서비스 상태:${NC}"
+docker compose -f "$COMPOSE_FILE" ps
+
+# 13. 접속 정보 표시
 echo -e "\n${GREEN}🎉 GTOne RAG System 시작 완료!${NC}"
 echo -e "\n${YELLOW}📌 접속 정보:${NC}"
 echo -e "   🌐 Web UI: http://localhost:8501"
@@ -365,18 +425,24 @@ echo -e "   Host Architecture: $HOST_ARCH"
 echo -e "   Deployment Mode: $DEPLOYMENT_MODE"
 echo -e "   Docker Platform: ${DOCKER_DEFAULT_PLATFORM}"
 echo -e "   Uvicorn Flags: $UVICORN_FLAGS"
+echo -e "   Compose File: $COMPOSE_FILE"
 
-echo -e "\n${YELLOW}💡 유용한 명령어:${NC}"
+echo -e "\n${YELLOW}🏗️ 컨테이너 구성:${NC}"
 if [ "$DEPLOYMENT_MODE" = "arm64" ]; then
-    echo -e "   📋 로그 확인: docker compose -f docker/development/docker-compose.yml --profile arm64 logs -f"
-    echo -e "   🛑 서비스 종료: docker compose -f docker/development/docker-compose.yml --profile arm64 down"
+    echo -e "   📦 qdrant: 벡터 데이터베이스 (별도 컨테이너)"
+    echo -e "   📦 gtrag-dev: API + Streamlit + Redis + Celery"
 else
-    echo -e "   📋 로그 확인: docker compose -f docker/development/docker-compose.yml logs -f"
-    echo -e "   🛑 서비스 종료: docker compose -f docker/development/docker-compose.yml down"
+    echo -e "   📦 gtrag-dev: 모든 서비스 통합 (Redis + Qdrant + API + Streamlit + Celery)"
 fi
 
-# 13. 브라우저 자동 열기 (선택적)
-if [ "$2" == "--open" ] || [ "$1" == "--open" ]; then
+echo -e "\n${YELLOW}💡 유용한 명령어:${NC}"
+echo -e "   📋 로그 확인: docker compose -f $COMPOSE_FILE logs -f"
+echo -e "   🛑 서비스 종료: docker compose -f $COMPOSE_FILE down"
+echo -e "   🧹 완전 정리: docker compose -f $COMPOSE_FILE down -v"
+echo -e "   🔄 재시작: $0 --clean"
+
+# 14. 브라우저 자동 열기 (선택적)
+if [[ "$*" == *"--open"* ]]; then
     echo -e "\n${BLUE}🌐 브라우저 열기 중...${NC}"
     sleep 3
     if command -v open &> /dev/null; then
@@ -384,6 +450,15 @@ if [ "$2" == "--open" ] || [ "$1" == "--open" ]; then
     elif command -v xdg-open &> /dev/null; then
         xdg-open http://localhost:8501
     fi
+fi
+
+# 15. 디버깅 정보 (문제가 있는 경우)
+if [ $attempt -eq $max_attempts ]; then
+    echo -e "\n${RED}🚨 문제 해결 정보:${NC}"
+    echo -e "   1. 로그 확인: docker compose -f $COMPOSE_FILE logs"
+    echo -e "   2. 컨테이너 상태: docker compose -f $COMPOSE_FILE ps"
+    echo -e "   3. 포트 확인: lsof -i:8501,18000,6333"
+    echo -e "   4. 재시작: $0 --clean"
 fi
 
 echo -e "\n${GREEN}✨ 개발 환경 준비 완료! 즐거운 개발 되세요! ✨${NC}"
