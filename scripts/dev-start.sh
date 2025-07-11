@@ -82,11 +82,44 @@ EOF
     fi
 fi
 
+# 환경변수 로드 함수
+load_env_file() {
+    local env_file="$1"
+
+    if [ ! -f "$env_file" ]; then
+        echo "❌ $env_file 파일을 찾을 수 없습니다."
+        return 1
+    fi
+
+    echo "📋 $env_file 파일에서 환경변수 로드 중..."
+
+    # 각 라인을 안전하게 처리
+    while IFS= read -r line; do
+        # 주석과 빈 줄 제외
+        if [[ ! "$line" =~ ^# ]] && [[ -n "$line" ]] && [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+            # = 기준으로 변수명과 값 분리
+            if [[ "$line" =~ ^([^=]+)=(.*)$ ]]; then
+                var_name="${BASH_REMATCH[1]}"
+                var_value="${BASH_REMATCH[2]}"
+
+                # 따옴표 제거 (있는 경우)
+                var_value=$(echo "$var_value" | sed 's/^"//; s/"$//' | sed "s/^'//; s/'$//")
+
+                # 기존 환경변수가 없는 경우만 설정
+                if [ -z "${!var_name}" ]; then
+                    export "$var_name"="$var_value"
+                fi
+            fi
+        fi
+    done < "$env_file"
+
+    echo -e "${GREEN}✅ 환경변수 로드 완료${NC}"
+    return 0
+}
+
 # 2. .env 파일에서 환경변수 로드
 if [ -f ".env" ]; then
-    echo "📋 .env 파일에서 환경변수 로드 중..."
-    export $(grep -v '^#' .env | grep -v '^$' | xargs)
-    echo -e "${GREEN}✅ 환경변수 로드 완료${NC}"
+    load_env_file ".env"
 else
     echo -e "${RED}❌ .env 파일을 찾을 수 없습니다.${NC}"
     exit 1
