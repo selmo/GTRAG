@@ -51,6 +51,8 @@ services:
       # 아키텍처별 볼륨 설정
       - gtrag_dev_redis:/var/lib/redis
       - ${QDRANT_VOLUME_MOUNT:-gtrag_dev_qdrant:/var/lib/qdrant/storage}
+    command: >
+      sh -c "uvicorn api.main:app $UVICORN_FLAGS & streamlit run Home.py --server.port 8501"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/"]
       interval: 30s
