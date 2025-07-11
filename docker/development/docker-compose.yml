@@ -64,6 +64,8 @@ services:
     depends_on:
       qdrant:
         condition: service_healthy
+    profiles:
+      - arm64  # depends_on 항목이 arm64 프로필에서만 활성화됨
 
 volumes:
   qdrant_data:
