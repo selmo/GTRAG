@@ -1,7 +1,14 @@
 import qdrant_client
 from qdrant_client.http import models as rest
+import os
 
-client = qdrant_client.QdrantClient(host="qdrant", port=6333)
+# 환경변수에서 Qdrant 연결 정보 가져오기
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+
+print(f"Connecting to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}")
+
+client = qdrant_client.QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
 def search(qvec, top_k=3, lang=None):
     flt = None

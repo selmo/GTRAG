@@ -1,22 +1,44 @@
 services:
+  # ARM64에서만 실행되는 별도 Qdrant 컨테이너
+  qdrant:
+    image: qdrant/qdrant:v1.9.3
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__LOG_LEVEL=INFO
+      - QDRANT__SERVICE__HTTP_PORT=6333
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    # ARM64에서만 실행
+    profiles:
+      - arm64
+
+  # 메인 GTOne RAG 앱
   gtrag-dev:
     build:
       context: ../..
       dockerfile: docker/development/Dockerfile
+      args:
+        - TARGETARCH=${TARGETARCH:-amd64}
     ports:
-      - "8501:8501"  # Streamlit UI (외부 접근)
-      # 내부 서비스들은 localhost로 통신
+      - "8501:8501"
     env_file: ../../.env
     environment:
       - PYTHONPATH=/app
-      # 단일 컨테이너 내부 통신용 설정
       - CELERY_BROKER_URL=redis://localhost:6379/0
       - CELERY_RESULT_BACKEND=redis://localhost:6379/0
-      - QDRANT_HOST=localhost
+      # 아키텍처별 Qdrant 호스트 설정
+      - QDRANT_HOST=${QDRANT_HOST:-localhost}
       - QDRANT_PORT=6333
-      # 외부 Ollama 서버 (기존 유지)
       - OLLAMA_HOST=http://172.16.15.112:11434
-      # Streamlit 설정
       - STREAMLIT_THEME_PRIMARY_COLOR="#FF6B6B"
       - STREAMLIT_THEME_BACKGROUND_COLOR="#FFFFFF"
       - STREAMLIT_THEME_SECONDARY_BACKGROUND_COLOR="#F0F2F6"
@@ -30,18 +52,30 @@ services:
       - ../../llm:/app/llm
       - ../../ui:/app/ui
       - ../../.streamlit:/app/.streamlit
-      # 데이터 영구 보존
-      - gtrag_dev_data:/var/lib/qdrant/storage
+      # 아키텍처별 볼륨 설정
       - gtrag_dev_redis:/var/lib/redis
+      - ${QDRANT_VOLUME_MOUNT:-gtrag_dev_qdrant:/var/lib/qdrant/storage}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
+    restart: unless-stopped
+    # ARM64에서는 외부 qdrant에 의존
+    depends_on:
+      qdrant:
+        condition: service_healthy
+        required: false
 
 volumes:
-  gtrag_dev_data:
+  qdrant_data:
     driver: local
   gtrag_dev_redis:
     driver: local
+  gtrag_dev_qdrant:
+    driver: local
+
+networks:
+  default:
+    name: gtrag-dev-network
