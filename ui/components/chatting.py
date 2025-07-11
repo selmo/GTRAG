@@ -4,7 +4,7 @@
 import streamlit as st
 from typing import Dict, List, Optional
 from datetime import datetime
-
+from ui.utils.streamlit_helpers import rerun
 
 def render_chat_history():
     """채팅 히스토리 렌더링"""
@@ -83,7 +83,7 @@ def clear_chat_history():
     """채팅 히스토리 초기화"""
     st.session_state.messages = []
     st.success("대화 내역이 초기화되었습니다.")
-    st.experimental_rerun()
+    rerun()
 
 
 def export_chat_history():

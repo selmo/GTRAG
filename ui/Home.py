@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 import time
 import requests
+from ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent))
@@ -153,7 +154,7 @@ def render_loading_screen(status_info: dict):
 
     # 자동 새로고침
     time.sleep(3)
-    st.experimental_rerun()
+    rerun()
 
 
 def render_main_app():
@@ -277,7 +278,7 @@ def render_main_app():
         # 채팅 숨기기 버튼
         if st.button("채팅 숨기기"):
             st.session_state.show_chat = False
-            st.experimental_rerun()
+            rerun()
 
     else:
         # 채팅이 숨겨진 경우 예시 질문 표시
@@ -297,7 +298,7 @@ def render_main_app():
                 if st.button(question, key=f"example_{idx}", use_container_width=True):
                     st.session_state.show_chat = True
                     SessionManager.add_message("user", question.split(" ", 1)[1])
-                    st.experimental_rerun()
+                    rerun()
 
     # 최근 활동
     st.divider()

@@ -5,6 +5,7 @@ GTOne RAG System - 메인 애플리케이션
 import streamlit as st
 import sys
 from pathlib import Path
+from ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent))
@@ -167,7 +168,7 @@ with tab1:
             if st.button("🗑️ 대화 초기화", use_container_width=True):
                 SessionManager.clear_messages()
                 st.success("대화가 초기화되었습니다.")
-                st.experimental_rerun()
+                rerun()
 
         with col2:
             if st.button("💾 대화 저장", use_container_width=True):

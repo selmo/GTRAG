@@ -5,7 +5,7 @@ import streamlit as st
 from datetime import datetime
 from typing import List, Dict, Optional
 import os
-
+from ui.utils.streamlit_helpers import rerun
 
 ALLOWED_EXTENSIONS = ['pdf', 'txt', 'png', 'jpg', 'jpeg', 'docx', 'doc']
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', '50'))
@@ -173,7 +173,7 @@ def render_uploaded_files():
                     if st.button("🗑️", key=f"delete_{idx}", help="삭제"):
                         # 실제 구현에서는 API 호출하여 삭제
                         st.session_state.uploaded_files.remove(file)
-                        st.experimental_rerun()
+                        rerun()
         
         if len(files) > 10:
             st.info(f"최근 10개 파일만 표시됩니다. (전체: {len(files)}개)")

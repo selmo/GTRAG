@@ -4,7 +4,7 @@
 import streamlit as st
 from datetime import datetime
 from typing import Dict, Optional
-
+from ui.utils.streamlit_helpers import rerun
 
 def render_sidebar(api_client):
     """사이드바 렌더링"""
@@ -194,8 +194,8 @@ def render_quick_actions():
             if 'messages' in st.session_state:
                 st.session_state.messages = []
                 st.success("대화가 초기화되었습니다.")
-                st.experimental_rerun()
+                rerun()
     
     with col2:
         if st.button("🔄 새로고침", use_container_width=True):
-            st.experimental_rerun()
+            rerun()

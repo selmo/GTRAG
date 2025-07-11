@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import pandas as pd
 from datetime import datetime
+from ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -103,7 +104,7 @@ for idx, (name, query) in enumerate(templates.items()):
     with cols[idx]:
         if st.button(f"📝 {name}", use_container_width=True):
             st.session_state.search_query = query
-            st.experimental_rerun()
+            rerun()
 
 # 검색 가이드
 with st.expander("💡 검색 팁"):
@@ -133,7 +134,7 @@ if st.button("🗑️ 검색 기록 삭제"):
     if 'search_history' in st.session_state:
         st.session_state.search_history = []
         st.success("검색 기록이 삭제되었습니다.")
-        st.experimental_rerun()
+        rerun()
 
 # 푸터
 st.divider()

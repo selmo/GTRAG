@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 import requests
 from typing import Dict, Any
+from ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent))
@@ -216,7 +217,7 @@ def render_loading_screen():
 
             # 자동 새로고침
             time.sleep(3)
-            st.experimental_rerun()
+            rerun()
 
 
 def render_tips_section():

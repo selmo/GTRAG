@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import pandas as pd
 from datetime import datetime
+from ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -64,7 +65,7 @@ with tab2:
     
     with col3:
         if st.button("🔄 새로고침", use_container_width=True):
-            st.experimental_rerun()
+            rerun()
     
     # 문서 목록 표시
     if 'uploaded_files' in st.session_state and st.session_state.uploaded_files:
@@ -98,7 +99,7 @@ with tab2:
                         for idx in sorted(selected_indices, reverse=True):
                             del st.session_state.uploaded_files[idx]
                         st.success(f"{len(selected_indices)}개 문서가 삭제되었습니다.")
-                        st.experimental_rerun()
+                        rerun()
                 
                 with col2:
                     if st.button("📥 메타데이터 다운로드"):

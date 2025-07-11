@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import json
 from datetime import datetime
+from ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -483,7 +484,7 @@ with tab4:
                     st.session_state.uploaded_files = backup_data["uploaded_files"]
                 
                 st.success("✅ 복원이 완료되었습니다.")
-                st.experimental_rerun()
+                rerun()
                 
         except Exception as e:
             st.error(f"백업 파일 읽기 실패: {str(e)}")

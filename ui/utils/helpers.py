@@ -9,6 +9,7 @@ import re
 import hashlib
 import mimetypes
 from pathlib import Path
+from ui.utils.streamlit_helpers import rerun
 
 
 def format_file_size(size_bytes: int) -> str:
@@ -333,12 +334,12 @@ def render_pagination_controls(current_page: int, total_pages: int,
     with col1:
         if st.button("⏮️", disabled=current_page == 1, key=f"first_{page_key}"):
             st.session_state[page_key] = 1
-            st.experimental_rerun()
+            rerun()
     
     with col2:
         if st.button("◀️", disabled=current_page == 1, key=f"prev_{page_key}"):
             st.session_state[page_key] = current_page - 1
-            st.experimental_rerun()
+            rerun()
     
     with col3:
         st.write(f"페이지 {current_page} / {total_pages}")
@@ -346,9 +347,9 @@ def render_pagination_controls(current_page: int, total_pages: int,
     with col4:
         if st.button("▶️", disabled=current_page == total_pages, key=f"next_{page_key}"):
             st.session_state[page_key] = current_page + 1
-            st.experimental_rerun()
+            rerun()
     
     with col5:
         if st.button("⏭️", disabled=current_page == total_pages, key=f"last_{page_key}"):
             st.session_state[page_key] = total_pages
-            st.experimental_rerun()
+            rerun()

@@ -5,7 +5,7 @@ import streamlit as st
 from typing import List, Dict, Optional
 import pandas as pd
 from datetime import datetime
-
+from ui.utils.streamlit_helpers import rerun
 
 def render_search_interface(api_client):
     """검색 인터페이스 렌더링"""
@@ -199,7 +199,7 @@ def render_single_result(idx: int, hit: Dict, show_preview: bool):
             if st.button("🔍 유사 문서 찾기", key=f"similar_{idx}"):
                 # 이 문서와 유사한 문서 검색
                 st.session_state.search_query = content[:50]
-                st.experimental_rerun()
+                rerun()
         
         st.divider()
 
@@ -269,7 +269,7 @@ def render_search_history():
                         use_container_width=True
                     ):
                         st.session_state.search_query = search['query']
-                        st.experimental_rerun()
+                        rerun()
                 
                 with col2:
                     st.caption(f"{search['result_count']}개")
@@ -309,4 +309,4 @@ def suggest_alternative_searches(query: str):
         with cols[idx]:
             if st.button(suggestion, key=f"suggest_{idx}"):
                 st.session_state.search_query = suggestion
-                st.experimental_rerun()
+                rerun()
