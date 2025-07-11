@@ -212,6 +212,6 @@ async def health_check():
 
 
 # 라우터 추가 (옵션)
-from .routes import router
+from api.routes import router
 
 app.include_router(router, prefix="/api")
