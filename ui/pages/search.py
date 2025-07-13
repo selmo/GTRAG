@@ -21,6 +21,87 @@ st.set_page_config(
     layout="wide"
 )
 
+# CSS 스타일 추가 (이 부분을 추가)
+st.markdown("""
+<style>
+/* 검색 결과 컨테이너 스타일 */
+.search-result-container {
+    background-color: var(--secondary-background-color);
+    padding: 1rem;
+    border-radius: 8px;
+    margin: 0.5rem 0;
+    border-left: 4px solid var(--primary-color);
+}
+
+/* 하이라이트된 텍스트 스타일 */
+mark {
+    background-color: #ffeb3b !important;
+    color: #000 !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    font-weight: 600 !important;
+}
+
+/* 검색 결과 텍스트 영역 */
+.search-content {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+    border: 1px solid #e9ecef;
+    font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 1rem;
+}
+
+/* 메타데이터 스타일 */
+.search-metadata {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+}
+
+/* 유사도 점수 스타일 */
+.score-high {
+    background-color: #d4edda;
+    color: #155724;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+.score-medium {
+    background-color: #fff3cd;
+    color: #856404;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+.score-low {
+    background-color: #d1ecf1;
+    color: #0c5460;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+/* 버튼 스타일 개선 */
+.stButton > button {
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+    transition: all 0.2s;
+}
+
+.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+</style>
+""", unsafe_allow_html=True)
+
 # API 클라이언트 초기화
 api_client = APIClient()
 

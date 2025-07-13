@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import APIRouter, UploadFile, File, Depends, Query
 from ingestion.parser import parse_pdf
 from ingestion.ocr import extract_text
@@ -6,9 +7,64 @@ from retriever.retriever import search as vector_search
 from uuid import uuid4
 from .schemas import UploadResponse, SearchResponse, SearchHit
 import qdrant_client
+from .main import get_qdrant_client   # ✅ main 에서 쓰는 함수 재사용
 
+
+qdrant = get_qdrant_client()            # 하드코딩 삭제
 router = APIRouter()
-qdrant = qdrant_client.QdrantClient(host="qdrant", port=6333)
+
+
+@router.get("/v1/documents", response_model=List[dict])
+async def list_documents():
+    """
+    Qdrant payload에서 source(파일명)별 청크 수·업로드 시각·언어 비율 등을 모아 반환
+    """
+    docs = {}
+    scroll_offset = None
+    while True:
+        points, scroll_offset = qdrant.scroll(
+            collection_name="chunks",
+            limit=256,
+            offset=scroll_offset,
+            with_payload=True,
+            with_vectors=False
+        )
+        for p in points:
+            src = p.payload.get("source", "unknown")
+            docs.setdefault(src, {"name": src, "chunks": 0, "latest": None})
+            docs[src]["chunks"] += 1
+            ts = p.payload.get("upload_timestamp")
+            if ts and (docs[src]["latest"] is None or ts > docs[src]["latest"]):
+                docs[src]["latest"] = ts
+
+            docs[src].setdefault("size_bytes", 0)
+            docs[src]["size_bytes"] += p.payload.get("file_size", 0)
+
+        if scroll_offset is None:
+            break
+
+    from datetime import datetime
+    # ISO → yyyy-mm-dd HH:MM 로 보기 좋게 변환
+    for d in docs.values():
+        if d["latest"]:
+            d["time"] = datetime.fromisoformat(d["latest"]).strftime("%Y-%m-%d %H:%M")
+
+    for d in docs.values():
+        d["time"] = (
+            datetime.fromisoformat(d["latest"]).strftime("%Y-%m-%d %H:%M")
+            if d["latest"] else None
+        )
+
+    for d in docs.values():
+        if d["latest"]:
+            d["time"] = datetime.fromisoformat(d["latest"]).strftime("%Y-%m-%d %H:%M")
+        if d.get("size_bytes"):
+            mb = d["size_bytes"] / 1024 / 1024
+            d["size"] = f"{mb:.2f} MB"
+        else:
+            d["size"] = "-"
+
+    return list(docs.values())
 
 
 @router.post("/v1/documents", response_model=UploadResponse)

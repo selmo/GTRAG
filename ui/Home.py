@@ -10,7 +10,10 @@ import requests
 from ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
-sys.path.append(str(Path(__file__).parent.parent))
+# 프로젝트 루트를 Python 경로에 추가
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from ui.utils.api_client import APIClient
 from ui.utils.session import SessionManager

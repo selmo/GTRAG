@@ -19,9 +19,21 @@ class SessionManager:
             st.session_state.messages = []
         
         # 파일 업로드 관련
-        if 'uploaded_files' not in st.session_state:
-            st.session_state.uploaded_files = []
-        
+        if 'uploaded_files' not in st.session_state or not st.session_state.uploaded_files:
+            try:
+                # 순환 의존성 방지를 위해 지연 import
+                from ui.utils.api_client import APIClient
+                docs = APIClient().list_documents()  # 백엔드에서 최신 목록 수집
+
+                # 누락 필드 기본값 보강 (표시 오류 방지)
+                for d in docs:
+                    d.setdefault("time", "-")
+                    d.setdefault("size", "-")
+                    st.session_state.uploaded_files = docs
+            except Exception as e:
+                st.session_state.uploaded_files = []
+                st.warning(f"문서 목록 동기화 실패: {e}")
+
         # 검색 관련
         if 'search_history' not in st.session_state:
             st.session_state.search_history = []

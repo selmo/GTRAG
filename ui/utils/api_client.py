@@ -36,6 +36,15 @@ class APIClient:
 
         logger.info(f"API Client initialized with base URL: {self.base_url}")
 
+    # ui/utils/api_client.py
+    def list_documents(self) -> List[Dict]:
+        try:
+            res = self._make_request("GET", "/v1/documents")
+            return res.json()
+        except Exception as e:
+            logger.error(f"Document list fetch error: {e}")
+            return []
+
     def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
         """
         HTTP 요청 실행

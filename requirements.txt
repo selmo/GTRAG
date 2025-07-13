@@ -12,11 +12,36 @@ requests==2.32.3                # HTTP 클라이언트 (Ollama API용)
 
 streamlit==1.37.1               # 웹 UI 프레임워크
 
+# --- PDF Parsing Libraries (한국어 지원 강화) ---
+# 우선순위 1: pdfplumber (한국어 PDF에 가장 좋음)
+pdfplumber==0.11.0              # 테이블과 텍스트 추출에 강함
+
+# 우선순위 2: PyMuPDF (빠르고 안정적)
+PyMuPDF==1.24.5                # 빠른 PDF 처리, 한국어 지원 양호
+
+# 우선순위 3: pypdf (PyPDF2의 후속)
+pypdf==4.3.1                   # 가벼운 PDF 처리
+
+# PDF 의존성
+pdfminer.six==20231228          # pdfplumber 의존성
+cryptography==42.0.7           # PDF 암호화 지원
+
+# --- 인코딩 감지 ---
+chardet==5.2.0                 # 문자 인코딩 자동 감지
+
 # --- OCR (택1) ---
 # ① Tesseract 로컬 OCR
 pytesseract==0.3.10
+
+# --- Word 문서 지원 ---
+python-docx==1.1.0             # Word 문서 파싱
 
 # --- Worker / 배치 ---
 celery==5.3.6
 redis==5.0.8                    # 기본 브로커
 numpy==1.26.4
+
+# --- 추가 유틸리티 ---
+pathlib2==2.3.7                # 경로 처리
+typing-extensions==4.12.2      # 타입 힌트 확장
+ftfy==6.1.1
