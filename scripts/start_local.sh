@@ -226,7 +226,7 @@ manage_qdrant() {
     fi
 
     # Apple Silicon 최적화된 Qdrant 실행
-    echo "   ($DOCKER_DEFAULT_PLATFORM)에 최적화된 Qdrant 컨테이너 생성 중..."
+    echo "   $DOCKER_DEFAULT_PLATFORM 에 최적화된 Qdrant 컨테이너 생성 중..."
     docker run -d \
         --name qdrant-local \
         --platform $DOCKER_DEFAULT_PLATFORM \
@@ -372,11 +372,11 @@ manage_redis() {
         fi
     fi
 
-    # Apple Silicon 최적화된 Redis 실행
-    echo "   Apple Silicon에 최적화된 Redis 컨테이너 생성 중..."
+    # 최적화된 Redis 실행
+    echo "   $DOCKER_DEFAULT_PLATFORM 에 최적화된 Redis 컨테이너 생성 중..."
     docker run -d \
         --name redis-local \
-        --platform linux/arm64 \
+        --platform $DOCKER_DEFAULT_PLATFORM \
         -p 6379:6379 \
         -v redis_data:/data \
         --restart unless-stopped \
