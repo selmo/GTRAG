@@ -226,10 +226,10 @@ manage_qdrant() {
     fi
 
     # Apple Silicon 최적화된 Qdrant 실행
-    echo "   Apple Silicon에 최적화된 Qdrant 컨테이너 생성 중..."
+    echo "   $(DOCKER_DEFAULT_PLATFORM) 최적화된 Qdrant 컨테이너 생성 중..."
     docker run -d \
         --name qdrant-local \
-        --platform linux/arm64 \
+        --platform $DOCKER_DEFAULT_PLATFORM \
         -p 6333:6333 \
         -p 6334:6334 \
         -v qdrant_storage:/qdrant/storage \
