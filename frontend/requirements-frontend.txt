@@ -1,0 +1,45 @@
+# GTOne RAG - 프론트엔드 의존성
+# Streamlit 기반 웹 UI
+
+# --- Core Web UI Framework ---
+streamlit==1.37.1               # 웹 UI 프레임워크
+
+# --- HTTP Client & API Communication ---
+requests==2.32.3                # HTTP 클라이언트 (백엔드 API 호출)
+
+# --- Data Processing & Visualization ---
+pandas==2.2.2                   # 데이터 처리
+numpy==1.26.4                   # 수치 연산
+plotly==5.17.0                  # 인터랙티브 차트
+
+# --- Image Processing (UI용) ---
+Pillow==10.4.0                  # 이미지 처리 (업로드 파일 미리보기)
+
+# --- Utilities ---
+python-dateutil==2.9.0         # 날짜 처리
+pytz==2024.1                   # 타임존 처리
+
+# --- JSON & Data Serialization ---
+# (Python 내장 json 모듈 사용)
+
+# --- 선택적 의존성 (고급 UI 기능) ---
+# 차트 라이브러리
+altair==5.3.0                   # 선언적 차트 (Streamlit 기본 지원)
+
+# 컴포넌트 확장
+streamlit-option-menu==0.3.12   # 사이드바 메뉴 개선
+streamlit-elements==0.1.0       # 고급 UI 컴포넌트 (선택적)
+
+# --- 개발 도구 (개발 환경용) ---
+# streamlit-autorefresh==1.0.1  # 자동 새로고침 (개발용)
+
+# --- 호환성 보장 ---
+typing-extensions==4.12.2       # 타입 힌트 확장
+setuptools>=65.0.0              # 패키지 설치 도구
+
+# --- 보안 ---
+urllib3>=1.26.0                 # 안전한 HTTP 라이브러리
+
+# --- 최소 버전 명시 ---
+# Python >= 3.11 필요
+# Streamlit은 Python 3.8+ 지원하지만 3.11+ 권장
