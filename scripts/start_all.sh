@@ -206,9 +206,9 @@ if [[ $SKIP_BACKEND == false ]]; then
         cd backend
 
         if $VERBOSE; then
-            ./scripts/start_backend.sh
+            ./scripts/_start_backend.sh
         else
-            ./scripts/start_backend.sh > /tmp/backend_start.log 2>&1
+            ./scripts/_start_backend.sh > /tmp/backend_start.log 2>&1
         fi
 
         backend_exit_code=$?
