@@ -244,18 +244,18 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 # FastAPI 서버 시작
 echo "   1. FastAPI 서버 시작 중..."
 echo "      Conda 환경: $CONDA_ENV_NAME"
-echo "      명령어: uvicorn api.main:app --host 0.0.0.0 --port 18000 --reload"
+echo "      명령어: uvicorn backend.api.main:app --host 0.0.0.0 --port 18000 --reload"
 
-nohup uvicorn api.main:app --host 0.0.0.0 --port 18000 --reload > logs/api.log 2>&1 &
+nohup uvicorn backend.api.main:app --host 0.0.0.0 --port 18000 --reload > logs/api.log 2>&1 &
 API_PID=$!
 echo "      PID: $API_PID"
 echo $API_PID > .api.pid
 
 # Celery Worker 시작
 echo "   2. Celery 워커 시작 중..."
-echo "      명령어: celery -A api.main.celery_app worker -l info"
+echo "      명령어: celery -A backend.api.main.celery_app worker -l info"
 
-nohup celery -A api.main.celery_app worker -l info > logs/celery.log 2>&1 &
+nohup celery -A backend.api.main.celery_app worker -l info > logs/celery.log 2>&1 &
 CELERY_PID=$!
 echo "      PID: $CELERY_PID"
 echo $CELERY_PID > .celery.pid

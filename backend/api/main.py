@@ -69,7 +69,7 @@ app.add_middleware(
 
 # Celery 앱 생성
 celery_app = Celery(
-    'api.main',
+    'backend.api.main',
     broker=os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0'),
     backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 )
