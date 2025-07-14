@@ -5,9 +5,9 @@ from backend.ingestion.ocr import extract_text
 from backend.embedding.embedder import embed_texts
 from backend.retriever.retriever import search as vector_search
 from uuid import uuid4
-from .schemas import UploadResponse, SearchResponse, SearchHit
+from backend.api.schemas import UploadResponse, SearchResponse, SearchHit
 import qdrant_client
-from .main import get_qdrant_client   # ✅ main 에서 쓰는 함수 재사용
+from backend.api.main import get_qdrant_client   # ✅ main 에서 쓰는 함수 재사용
 
 
 qdrant = get_qdrant_client()            # 하드코딩 삭제
