@@ -90,10 +90,10 @@ fi
 echo -e "\n${BLUE}📚 Python 패키지 설치 확인...${NC}"
 
 # requirements.txt 파일 확인
-if [[ -f "requirements-backend.txt" ]]; then
-    REQ_FILE="requirements-backend.txt"
-elif [[ -f "requirements.txt" ]]; then
-    REQ_FILE="requirements.txt"
+if [[ -f "backend/requirements-backend.txt" ]]; then
+    REQ_FILE="backend/requirements-backend.txt"
+elif [[ -f "backend/requirements.txt" ]]; then
+    REQ_FILE="backend/requirements.txt"
 else
     echo -e "${RED}❌ requirements 파일을 찾을 수 없습니다.${NC}"
     exit 1
