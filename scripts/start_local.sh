@@ -132,6 +132,22 @@ echo "   PYTHONPATH: $PYTHONPATH"
 echo "   QDRANT_HOST: $QDRANT_HOST"
 echo "   OLLAMA_HOST: $OLLAMA_HOST"
 
+# Detect host architecture
+ARCH=$(uname -m)
+if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
+  TARGETARCH="arm64"
+  DOCKER_DEFAULT_PLATFORM="linux/arm64"
+else
+  TARGETARCH="amd64"
+  DOCKER_DEFAULT_PLATFORM="linux/amd64"
+fi
+
+export TARGETARCH
+export DOCKER_DEFAULT_PLATFORM
+
+echo "🧠 감지된 아키텍처: $ARCH → Docker 플랫폼: $DOCKER_DEFAULT_PLATFORM"
+
+
 # 6. Docker 설치 확인
 echo -e "\n${BLUE}🐳 Docker 환경 확인...${NC}"
 if ! command -v docker &> /dev/null; then
