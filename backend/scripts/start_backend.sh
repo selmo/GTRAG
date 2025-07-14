@@ -153,7 +153,7 @@ fi
 
 # 기본 환경변수 설정
 export PYTHONPATH=$(pwd):${PYTHONPATH}
-export QDRANT_HOST=${QDRANT_HOST:-"qdrant-service"}
+export QDRANT_HOST=${QDRANT_HOST:-"qdrant"}
 export QDRANT_PORT=${QDRANT_PORT:-"6333"}
 export OLLAMA_HOST=${OLLAMA_HOST:-"http://172.16.15.112:11434"}
 export CELERY_BROKER_URL=${CELERY_BROKER_URL:-"redis://localhost:6379/0"}
