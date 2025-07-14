@@ -1,7 +1,7 @@
 #!/bin/bash
 
-echo "🔧 GTOne RAG - 백엔드 서비스 시작"
-echo "=================================="
+echo "🔧 GTOne RAG - 백엔드 서비스 시작 (Conda 환경)"
+echo "=============================================="
 
 # 색상 정의
 RED='\033[0;31m'
@@ -14,17 +14,18 @@ NC='\033[0m'
 START_TIME=$(date)
 echo "시작 시간: $START_TIME"
 
-# 1. 환경 확인
-echo -e "\n${BLUE}🔍 환경 확인...${NC}"
+# 1. Conda 환경 확인
+echo -e "\n${BLUE}🐍 Conda 환경 확인...${NC}"
 
-# Python 환경 확인
-if ! command -v python &> /dev/null; then
-    echo -e "${RED}❌ Python이 설치되지 않았습니다.${NC}"
+if ! command -v conda &> /dev/null; then
+    echo -e "${RED}❌ Conda가 설치되지 않았습니다.${NC}"
+    echo "   Conda 설치 방법:"
+    echo "   - Anaconda: https://www.anaconda.com/products/distribution"
+    echo "   - Miniconda: https://docs.conda.io/en/latest/miniconda.html"
     exit 1
 fi
 
-PYTHON_VERSION=$(python --version 2>&1 | cut -d' ' -f2)
-echo -e "${GREEN}✅ Python 버전: $PYTHON_VERSION${NC}"
+echo -e "${GREEN}✅ Conda 버전: $(conda --version)${NC}"
 
 # 현재 디렉토리가 backend인지 확인
 if [[ ! -f "api/main.py" ]]; then
@@ -35,40 +36,77 @@ fi
 
 echo -e "${GREEN}✅ 백엔드 디렉토리 확인됨${NC}"
 
-# 2. 가상환경 확인/생성
-echo -e "\n${BLUE}🐍 Python 가상환경 설정...${NC}"
+# 2. GTRAG-Backend Conda 환경 확인/생성
+echo -e "\n${BLUE}📦 GTRAG-Backend Conda 환경 설정...${NC}"
 
-VENV_DIR="venv"
-if [[ ! -d "$VENV_DIR" ]]; then
-    echo "가상환경을 생성합니다..."
-    python -m venv $VENV_DIR
-    echo -e "${GREEN}✅ 가상환경 생성 완료${NC}"
+CONDA_ENV_NAME="GTRAG-Backend"
+
+if conda env list | grep -q "^$CONDA_ENV_NAME "; then
+    echo -e "${GREEN}✅ $CONDA_ENV_NAME 환경이 이미 존재합니다.${NC}"
+else
+    echo -e "${YELLOW}⚠️  $CONDA_ENV_NAME 환경이 없습니다. 생성 중...${NC}"
+
+    # Python 3.11로 환경 생성
+    conda create -n $CONDA_ENV_NAME python=3.11 -y
+
+    if [[ $? -eq 0 ]]; then
+        echo -e "${GREEN}✅ $CONDA_ENV_NAME 환경이 성공적으로 생성되었습니다.${NC}"
+    else
+        echo -e "${RED}❌ $CONDA_ENV_NAME 환경 생성에 실패했습니다.${NC}"
+        exit 1
+    fi
 fi
 
-# 가상환경 활성화
-source $VENV_DIR/bin/activate
+# 3. Conda 환경 활성화
+echo -e "\n${BLUE}🔧 $CONDA_ENV_NAME 환경 활성화...${NC}"
 
-if [[ "$VIRTUAL_ENV" ]]; then
-    echo -e "${GREEN}✅ 가상환경 활성화됨: $VIRTUAL_ENV${NC}"
+# Conda 초기화 (필요한 경우)
+if [[ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]]; then
+    source "$HOME/anaconda3/etc/profile.d/conda.sh"
+elif [[ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]]; then
+    source "$HOME/miniconda3/etc/profile.d/conda.sh"
+elif [[ -f "/opt/anaconda3/etc/profile.d/conda.sh" ]]; then
+    source "/opt/anaconda3/etc/profile.d/conda.sh"
+elif [[ -f "/opt/miniconda3/etc/profile.d/conda.sh" ]]; then
+    source "/opt/miniconda3/etc/profile.d/conda.sh"
 else
-    echo -e "${RED}❌ 가상환경 활성화 실패${NC}"
+    # conda init 시도
+    eval "$(conda shell.bash hook)"
+fi
+
+# GTRAG-Backend 환경 활성화
+conda activate $CONDA_ENV_NAME
+
+if [[ $? -eq 0 ]]; then
+    echo -e "${GREEN}✅ $CONDA_ENV_NAME 환경이 활성화되었습니다.${NC}"
+    echo "   현재 Python 경로: $(which python)"
+    echo "   현재 Python 버전: $(python --version)"
+else
+    echo -e "${RED}❌ $CONDA_ENV_NAME 환경 활성화에 실패했습니다.${NC}"
     exit 1
 fi
 
-# 3. 의존성 설치
-echo -e "\n${BLUE}📦 의존성 확인 및 설치...${NC}"
+# 4. 의존성 설치
+echo -e "\n${BLUE}📚 Python 패키지 설치 확인...${NC}"
 
-if [[ ! -f "requirements-backend.txt" ]]; then
-    echo -e "${YELLOW}⚠️  requirements-backend.txt가 없습니다. requirements.txt 사용${NC}"
+# requirements.txt 파일 확인
+if [[ -f "requirements-backend.txt" ]]; then
+    REQ_FILE="requirements-backend.txt"
+elif [[ -f "requirements.txt" ]]; then
     REQ_FILE="requirements.txt"
 else
-    REQ_FILE="requirements-backend.txt"
+    echo -e "${RED}❌ requirements 파일을 찾을 수 없습니다.${NC}"
+    exit 1
 fi
 
-# 주요 패키지 확인
-echo "주요 패키지 설치 상태 확인..."
+echo "사용할 requirements 파일: $REQ_FILE"
+
+# 주요 패키지 설치 상태 확인
+echo "주요 백엔드 패키지 설치 상태 확인 중..."
+
 missing_packages=()
 
+# 필수 패키지 목록
 required_packages=(
     "fastapi"
     "uvicorn"
@@ -76,6 +114,7 @@ required_packages=(
     "redis"
     "qdrant_client"
     "sentence_transformers"
+    "requests"
 )
 
 for package in "${required_packages[@]}"; do
@@ -84,22 +123,24 @@ for package in "${required_packages[@]}"; do
     fi
 done
 
+# 누락된 패키지가 있으면 설치
 if [[ ${#missing_packages[@]} -ne 0 ]]; then
-    echo -e "${YELLOW}⚠️  누락된 패키지: ${missing_packages[*]}${NC}"
-    echo "패키지를 설치합니다..."
+    echo -e "${YELLOW}⚠️  누락된 패키지가 있습니다. 설치 중...${NC}"
+    echo "누락된 패키지: ${missing_packages[*]}"
+
     pip install -r $REQ_FILE
 
     if [[ $? -eq 0 ]]; then
-        echo -e "${GREEN}✅ 패키지 설치 완료${NC}"
+        echo -e "${GREEN}✅ 패키지 설치가 완료되었습니다.${NC}"
     else
-        echo -e "${RED}❌ 패키지 설치 실패${NC}"
+        echo -e "${RED}❌ 패키지 설치에 실패했습니다.${NC}"
         exit 1
     fi
 else
-    echo -e "${GREEN}✅ 모든 필수 패키지가 설치되어 있습니다${NC}"
+    echo -e "${GREEN}✅ 모든 필수 패키지가 설치되어 있습니다.${NC}"
 fi
 
-# 4. 환경변수 설정
+# 5. 환경변수 설정
 echo -e "\n${BLUE}🔧 환경변수 설정...${NC}"
 
 # .env 파일 확인
@@ -118,12 +159,13 @@ export OLLAMA_HOST=${OLLAMA_HOST:-"http://172.16.15.112:11434"}
 export CELERY_BROKER_URL=${CELERY_BROKER_URL:-"redis://localhost:6379/0"}
 export CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-"redis://localhost:6379/0"}
 
+echo "   Conda 환경: $CONDA_ENV_NAME"
 echo "   PYTHONPATH: $PYTHONPATH"
 echo "   QDRANT_HOST: $QDRANT_HOST:$QDRANT_PORT"
 echo "   OLLAMA_HOST: $OLLAMA_HOST"
 echo "   CELERY_BROKER: $CELERY_BROKER_URL"
 
-# 5. 서비스 의존성 확인
+# 6. 서비스 의존성 확인
 echo -e "\n${BLUE}🔗 서비스 의존성 확인...${NC}"
 
 # Qdrant 확인
@@ -132,18 +174,18 @@ if curl -s --connect-timeout 3 "$QDRANT_HOST:$QDRANT_PORT/health" > /dev/null 2>
     echo -e "${GREEN}✅ 연결됨${NC}"
 else
     echo -e "${RED}❌ 연결 실패${NC}"
-    echo -e "${YELLOW}   Qdrant가 실행 중인지 확인하세요: docker run -p 6333:6333 qdrant/qdrant${NC}"
+    echo -e "${YELLOW}   Qdrant가 실행 중인지 확인하세요: cd ../infrastructure && ./scripts/start_infra.sh${NC}"
 fi
 
 # Redis 확인
 echo -n "   Redis 연결 테스트... "
 if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
     echo -e "${GREEN}✅ 연결됨${NC}"
-elif command -v docker &> /dev/null && docker exec redis-local redis-cli ping > /dev/null 2>&1; then
+elif command -v docker &> /dev/null && docker exec redis-service redis-cli ping > /dev/null 2>&1; then
     echo -e "${GREEN}✅ 연결됨 (Docker)${NC}"
 else
     echo -e "${RED}❌ 연결 실패${NC}"
-    echo -e "${YELLOW}   Redis가 실행 중인지 확인하세요: redis-server 또는 Docker${NC}"
+    echo -e "${YELLOW}   Redis가 실행 중인지 확인하세요: cd ../infrastructure && ./scripts/start_infra.sh${NC}"
 fi
 
 # Ollama 확인 (선택적)
@@ -154,7 +196,7 @@ else
     echo -e "${YELLOW}⚠️  연결 실패 (LLM 기능 제한됨)${NC}"
 fi
 
-# 6. 기존 프로세스 정리
+# 7. 기존 프로세스 정리
 echo -e "\n${BLUE}🧹 기존 프로세스 정리...${NC}"
 
 # PID 파일들 확인
@@ -191,14 +233,15 @@ check_port() {
 
 check_port 18000 "API 서버" || exit 1
 
-# 7. 로그 디렉토리 생성
+# 8. 로그 디렉토리 생성
 mkdir -p logs
 
-# 8. 서비스 시작
+# 9. 서비스 시작
 echo -e "\n${BLUE}🚀 백엔드 서비스 시작...${NC}"
 
 # FastAPI 서버 시작
 echo "   1. FastAPI 서버 시작 중..."
+echo "      Conda 환경: $CONDA_ENV_NAME"
 echo "      명령어: uvicorn api.main:app --host 0.0.0.0 --port 18000 --reload"
 
 nohup uvicorn api.main:app --host 0.0.0.0 --port 18000 --reload > logs/api.log 2>&1 &
@@ -215,7 +258,7 @@ CELERY_PID=$!
 echo "      PID: $CELERY_PID"
 echo $CELERY_PID > .celery.pid
 
-# 9. 서비스 준비 대기
+# 10. 서비스 준비 대기
 echo -e "\n${BLUE}⏳ 서비스 준비 대기...${NC}"
 echo -n "대기 중"
 
@@ -247,7 +290,7 @@ if [[ $api_ready == false ]]; then
     echo "로그를 확인해보세요: tail -f logs/api.log"
 fi
 
-# 10. 최종 상태 확인
+# 11. 최종 상태 확인
 echo -e "\n${BLUE}📊 백엔드 서비스 상태 확인...${NC}"
 
 # 프로세스 상태
@@ -281,9 +324,10 @@ for endpoint_info in "${endpoints[@]}"; do
     fi
 done
 
-# 11. 완료 메시지
+# 12. 완료 메시지
 echo -e "\n${GREEN}🎉 백엔드 서비스 시작 완료!${NC}"
 echo -e "\n${YELLOW}📌 서비스 정보:${NC}"
+echo -e "   🐍 Conda 환경: $CONDA_ENV_NAME"
 echo -e "   🌐 API 문서: http://localhost:18000/docs"
 echo -e "   📊 헬스체크: http://localhost:18000/v1/health"
 echo -e "   📁 로그 디렉토리: $(pwd)/logs"
@@ -293,21 +337,22 @@ echo -e "   📊 로그 확인:"
 echo -e "      - API: tail -f logs/api.log"
 echo -e "      - Celery: tail -f logs/celery.log"
 echo -e "   🛑 서비스 종료: ./scripts/stop_backend.sh"
-echo -e "   🔄 서비스 재시작: ./scripts/stop_backend.sh && ./scripts/start_backend.sh"
+echo -e "   🔄 환경 재활성화: conda activate $CONDA_ENV_NAME"
 
 echo -e "\n${YELLOW}💡 다음 단계:${NC}"
 echo -e "   1. 프론트엔드 시작: cd ../frontend && ./scripts/start_frontend.sh"
 echo -e "   2. 또는 전체 시스템: cd .. && ./scripts/start_all.sh"
 
-echo -e "\n${GREEN}✨ 백엔드 서비스 실행 중! ✨${NC}"
+echo -e "\n${GREEN}✨ 백엔드 서비스 실행 중! (Conda: $CONDA_ENV_NAME) ✨${NC}"
 
 # 서비스 정보 저장
 cat > .backend_info << EOF
-# GTOne RAG Backend Service Info
+# GTOne RAG Backend Service Info (Conda)
 # Generated: $(date)
+CONDA_ENV=$CONDA_ENV_NAME
 API_PID=$API_PID
 CELERY_PID=$CELERY_PID
 API_URL=http://localhost:18000
-VIRTUAL_ENV=$VIRTUAL_ENV
+PYTHON_PATH=$(which python)
 PYTHONPATH=$PYTHONPATH
 EOF

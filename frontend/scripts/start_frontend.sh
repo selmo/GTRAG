@@ -1,7 +1,7 @@
 #!/bin/bash
 
-echo "🎨 GTOne RAG - 프론트엔드 UI 시작"
-echo "================================"
+echo "🎨 GTOne RAG - 프론트엔드 UI 시작 (Conda 환경)"
+echo "=============================================="
 
 # 색상 정의
 RED='\033[0;31m'
@@ -14,17 +14,18 @@ NC='\033[0m'
 START_TIME=$(date)
 echo "시작 시간: $START_TIME"
 
-# 1. 환경 확인
-echo -e "\n${BLUE}🔍 환경 확인...${NC}"
+# 1. Conda 환경 확인
+echo -e "\n${BLUE}🐍 Conda 환경 확인...${NC}"
 
-# Python 환경 확인
-if ! command -v python &> /dev/null; then
-    echo -e "${RED}❌ Python이 설치되지 않았습니다.${NC}"
+if ! command -v conda &> /dev/null; then
+    echo -e "${RED}❌ Conda가 설치되지 않았습니다.${NC}"
+    echo "   Conda 설치 방법:"
+    echo "   - Anaconda: https://www.anaconda.com/products/distribution"
+    echo "   - Miniconda: https://docs.conda.io/en/latest/miniconda.html"
     exit 1
 fi
 
-PYTHON_VERSION=$(python --version 2>&1 | cut -d' ' -f2)
-echo -e "${GREEN}✅ Python 버전: $PYTHON_VERSION${NC}"
+echo -e "${GREEN}✅ Conda 버전: $(conda --version)${NC}"
 
 # 현재 디렉토리가 frontend인지 확인
 if [[ ! -f "ui/Home.py" ]]; then
@@ -45,7 +46,10 @@ echo "   - 로딩 페이지: $(if [[ -f "ui/Loading.py" ]]; then echo "✅"; els
 if [[ -d "ui/pages" ]]; then
     page_count=$(find ui/pages -name "*.py" 2>/dev/null | wc -l)
     echo "   - 페이지 수: $page_count개"
-    find ui/pages -name "*.py" 2>/dev/null | sed 's|^|     - |'
+    find ui/pages -name "*.py" 2>/dev/null | head -3 | sed 's|^|     - |'
+    if [[ $page_count -gt 3 ]]; then
+        echo "     - ..."
+    fi
 else
     echo "   - 페이지 디렉토리: ❌ ui/pages/ 없음"
 fi
@@ -57,28 +61,58 @@ else
     echo "   - 컴포넌트 디렉토리: ❌ ui/components/ 없음"
 fi
 
-# 2. 가상환경 확인/생성
-echo -e "\n${BLUE}🐍 Python 가상환경 설정...${NC}"
+# 2. GTRAG-Frontend Conda 환경 확인/생성
+echo -e "\n${BLUE}📦 GTRAG-Frontend Conda 환경 설정...${NC}"
 
-VENV_DIR="venv"
-if [[ ! -d "$VENV_DIR" ]]; then
-    echo "가상환경을 생성합니다..."
-    python -m venv $VENV_DIR
-    echo -e "${GREEN}✅ 가상환경 생성 완료${NC}"
+CONDA_ENV_NAME="GTRAG-Frontend"
+
+if conda env list | grep -q "^$CONDA_ENV_NAME "; then
+    echo -e "${GREEN}✅ $CONDA_ENV_NAME 환경이 이미 존재합니다.${NC}"
+else
+    echo -e "${YELLOW}⚠️  $CONDA_ENV_NAME 환경이 없습니다. 생성 중...${NC}"
+
+    # Python 3.11로 환경 생성
+    conda create -n $CONDA_ENV_NAME python=3.11 -y
+
+    if [[ $? -eq 0 ]]; then
+        echo -e "${GREEN}✅ $CONDA_ENV_NAME 환경이 성공적으로 생성되었습니다.${NC}"
+    else
+        echo -e "${RED}❌ $CONDA_ENV_NAME 환경 생성에 실패했습니다.${NC}"
+        exit 1
+    fi
 fi
 
-# 가상환경 활성화
-source $VENV_DIR/bin/activate
+# 3. Conda 환경 활성화
+echo -e "\n${BLUE}🔧 $CONDA_ENV_NAME 환경 활성화...${NC}"
 
-if [[ "$VIRTUAL_ENV" ]]; then
-    echo -e "${GREEN}✅ 가상환경 활성화됨: $VIRTUAL_ENV${NC}"
+# Conda 초기화 (필요한 경우)
+if [[ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]]; then
+    source "$HOME/anaconda3/etc/profile.d/conda.sh"
+elif [[ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]]; then
+    source "$HOME/miniconda3/etc/profile.d/conda.sh"
+elif [[ -f "/opt/anaconda3/etc/profile.d/conda.sh" ]]; then
+    source "/opt/anaconda3/etc/profile.d/conda.sh"
+elif [[ -f "/opt/miniconda3/etc/profile.d/conda.sh" ]]; then
+    source "/opt/miniconda3/etc/profile.d/conda.sh"
 else
-    echo -e "${RED}❌ 가상환경 활성화 실패${NC}"
+    # conda init 시도
+    eval "$(conda shell.bash hook)"
+fi
+
+# GTRAG-Frontend 환경 활성화
+conda activate $CONDA_ENV_NAME
+
+if [[ $? -eq 0 ]]; then
+    echo -e "${GREEN}✅ $CONDA_ENV_NAME 환경이 활성화되었습니다.${NC}"
+    echo "   현재 Python 경로: $(which python)"
+    echo "   현재 Python 버전: $(python --version)"
+else
+    echo -e "${RED}❌ $CONDA_ENV_NAME 환경 활성화에 실패했습니다.${NC}"
     exit 1
 fi
 
-# 3. 의존성 설치
-echo -e "\n${BLUE}📦 의존성 확인 및 설치...${NC}"
+# 4. 의존성 설치
+echo -e "\n${BLUE}📚 Python 패키지 설치 확인...${NC}"
 
 # 프론트엔드 전용 requirements 파일 확인
 if [[ -f "requirements-frontend.txt" ]]; then
@@ -101,6 +135,7 @@ required_packages=(
     "requests"
     "pandas"
     "numpy"
+    "plotly"
 )
 
 for package in "${required_packages[@]}"; do
@@ -128,7 +163,7 @@ fi
 STREAMLIT_VERSION=$(streamlit version 2>/dev/null | head -1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
 echo "   Streamlit 버전: ${STREAMLIT_VERSION:-unknown}"
 
-# 4. 환경변수 설정
+# 5. 환경변수 설정
 echo -e "\n${BLUE}🔧 환경변수 설정...${NC}"
 
 # 백엔드 API 서버 정보
@@ -140,11 +175,12 @@ export STREAMLIT_SERVER_ADDRESS=${STREAMLIT_SERVER_ADDRESS:-"0.0.0.0"}
 export STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 export STREAMLIT_GLOBAL_DEVELOPMENT_MODE=false
 
+echo "   Conda 환경: $CONDA_ENV_NAME"
 echo "   API_BASE_URL: $API_BASE_URL"
 echo "   STREAMLIT_PORT: $STREAMLIT_SERVER_PORT"
 echo "   STREAMLIT_ADDRESS: $STREAMLIT_SERVER_ADDRESS"
 
-# 5. 백엔드 연결 확인
+# 6. 백엔드 연결 확인
 echo -e "\n${BLUE}🔗 백엔드 서비스 연결 확인...${NC}"
 
 echo -n "   백엔드 API 서버 연결... "
@@ -169,7 +205,7 @@ else
     fi
 fi
 
-# 6. Streamlit 설정 파일 처리
+# 7. Streamlit 설정 파일 처리
 echo -e "\n${BLUE}⚙️ Streamlit 설정...${NC}"
 
 STREAMLIT_CONFIG_DIR=".streamlit"
@@ -233,7 +269,7 @@ else
     echo "   기존 Streamlit 설정 파일 사용"
 fi
 
-# 7. 기존 프로세스 정리
+# 8. 기존 프로세스 정리
 echo -e "\n${BLUE}🧹 기존 프로세스 정리...${NC}"
 
 # PID 파일 확인
@@ -264,15 +300,16 @@ else
     echo -e "${GREEN}사용 가능${NC}"
 fi
 
-# 8. 로그 디렉토리 생성
+# 9. 로그 디렉토리 생성
 mkdir -p logs
 
-# 9. Streamlit 애플리케이션 시작
+# 10. Streamlit 애플리케이션 시작
 echo -e "\n${BLUE}🚀 Streamlit 애플리케이션 시작...${NC}"
 
 # 메인 애플리케이션 파일 설정
 STREAMLIT_APP="ui/Home.py"
 echo "   메인 앱 파일: $STREAMLIT_APP"
+echo "   Conda 환경: $CONDA_ENV_NAME"
 
 # Streamlit 실행 명령어 구성
 STREAMLIT_CMD="streamlit run $STREAMLIT_APP"
@@ -309,7 +346,7 @@ STREAMLIT_PID=$!
 echo "   PID: $STREAMLIT_PID"
 echo $STREAMLIT_PID > .streamlit.pid
 
-# 10. 서비스 준비 대기
+# 11. 서비스 준비 대기
 echo -e "\n${BLUE}⏳ Streamlit 서비스 준비 대기...${NC}"
 echo -n "대기 중"
 
@@ -357,7 +394,7 @@ if [[ $streamlit_ready == false ]]; then
     fi
 fi
 
-# 11. 최종 상태 확인
+# 12. 최종 상태 확인
 echo -e "\n${BLUE}📊 프론트엔드 서비스 상태 확인...${NC}"
 
 # 프로세스 상태
@@ -401,9 +438,10 @@ if [[ $streamlit_ready == true ]]; then
     fi
 fi
 
-# 12. 완료 메시지
+# 13. 완료 메시지
 echo -e "\n${GREEN}🎉 프론트엔드 서비스 시작 완료!${NC}"
 echo -e "\n${YELLOW}📌 서비스 정보:${NC}"
+echo -e "   🐍 Conda 환경: $CONDA_ENV_NAME"
 echo -e "   🌐 웹 UI: http://localhost:$STREAMLIT_SERVER_PORT"
 echo -e "   📊 백엔드 API: $API_BASE_URL"
 echo -e "   📁 로그 파일: $(pwd)/logs/streamlit.log"
@@ -411,7 +449,7 @@ echo -e "   📁 로그 파일: $(pwd)/logs/streamlit.log"
 echo -e "\n${YELLOW}📋 유용한 명령어:${NC}"
 echo -e "   📊 로그 확인: tail -f logs/streamlit.log"
 echo -e "   🛑 서비스 종료: ./scripts/stop_frontend.sh"
-echo -e "   🔄 서비스 재시작: ./scripts/stop_frontend.sh && ./scripts/start_frontend.sh"
+echo -e "   🔄 환경 재활성화: conda activate $CONDA_ENV_NAME"
 
 echo -e "\n${YELLOW}💡 사용 방법:${NC}"
 echo -e "   1. 웹 브라우저에서 http://localhost:$STREAMLIT_SERVER_PORT 접속"
@@ -419,15 +457,16 @@ echo -e "   2. 사이드바에서 문서 업로드"
 echo -e "   3. 채팅으로 AI와 대화"
 echo -e "   4. 검색 페이지에서 문서 검색"
 
-echo -e "\n${GREEN}✨ 프론트엔드 서비스 실행 중! ✨${NC}"
+echo -e "\n${GREEN}✨ 프론트엔드 서비스 실행 중! (Conda: $CONDA_ENV_NAME) ✨${NC}"
 
 # 서비스 정보 저장
 cat > .frontend_info << EOF
-# GTOne RAG Frontend Service Info
+# GTOne RAG Frontend Service Info (Conda)
 # Generated: $(date)
+CONDA_ENV=$CONDA_ENV_NAME
 STREAMLIT_PID=$STREAMLIT_PID
 STREAMLIT_URL=http://localhost:$STREAMLIT_SERVER_PORT
 API_BASE_URL=$API_BASE_URL
-VIRTUAL_ENV=$VIRTUAL_ENV
+PYTHON_PATH=$(which python)
 STREAMLIT_VERSION=$STREAMLIT_VERSION
 EOF
