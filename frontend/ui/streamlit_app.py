@@ -5,18 +5,18 @@ GTOne RAG System - 메인 애플리케이션
 import streamlit as st
 import sys
 from pathlib import Path
-from ui.utils.streamlit_helpers import rerun
+from frontend.ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent))
 
 # 컴포넌트 및 유틸리티 import
-from ui.utils.api_client import APIClient
-from ui.utils.session import SessionManager, init_page_state
-from ui.components.sidebar import render_sidebar
-from ui.components.chatting import render_chat_history, handle_chat_input
-from ui.components.searching import render_search_interface
-from ui.components.uploader import get_upload_summary
+from frontend.ui.utils.api_client import APIClient
+from frontend.ui.utils.session import SessionManager, init_page_state
+from frontend.ui.components.sidebar import render_sidebar
+from frontend.ui.components.chatting import render_chat_history, handle_chat_input
+from frontend.ui.components.searching import render_search_interface
+from frontend.ui.components.uploader import get_upload_summary
 
 # 페이지 설정
 st.set_page_config(
@@ -181,7 +181,7 @@ with tab1:
                 )
 
         with col3:
-            from ui.components.chatting import export_chat_history
+            from frontend.ui.components.chatting import export_chat_history
 
             export_chat_history()
 

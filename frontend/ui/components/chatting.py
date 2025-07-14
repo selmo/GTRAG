@@ -4,7 +4,7 @@
 import streamlit as st
 from typing import Dict, List, Optional
 from datetime import datetime
-from ui.utils.streamlit_helpers import rerun
+from frontend.ui.utils.streamlit_helpers import rerun
 
 def render_chat_history():
     """채팅 히스토리 렌더링"""

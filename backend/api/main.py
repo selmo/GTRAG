@@ -89,8 +89,8 @@ celery_app.conf.update(
 def process_document_async(file_path: str, file_name: str):
     """백그라운드에서 문서 처리"""
     try:
-        from ingestion.parser import parse_pdf
-        from embedding.embedder import embed_texts
+        from backend.ingestion.parser import parse_pdf
+        from backend.embedding.embedder import embed_texts
 
         # 파일 읽기
         with open(file_path, 'rb') as f:
@@ -201,12 +201,12 @@ async def upload(file: UploadFile = File(...)):
 
             if file_ext == '.pdf':
                 # 개선된 PDF 파싱 (여러 라이브러리 단계적 시도)
-                from ingestion.parser import parse_pdf
+                from backend.ingestion.parser import parse_pdf
                 chunks = parse_pdf(temp_path, lang_hint="ko")  # 한국어 힌트 추가
 
             elif file_ext in ['.png', '.jpg', '.jpeg']:
                 # 이미지 OCR
-                from ingestion.ocr import extract_text
+                from backend.ingestion.ocr import extract_text
                 text = extract_text(temp_path, lang_hint="kor+eng")  # 한영 혼합
                 if text and text.strip():
                     chunks = [{
@@ -223,11 +223,11 @@ async def upload(file: UploadFile = File(...)):
 
             elif file_ext in ['.docx', '.doc']:
                 # Word 문서
-                from ingestion.parser import parse_docx
+                from backend.ingestion.parser import parse_docx
                 chunks = parse_docx(temp_path, lang_hint="ko")
 
             else:  # 텍스트 파일
-                from ingestion.parser import parse_text_file
+                from backend.ingestion.parser import parse_text_file
                 chunks = parse_text_file(temp_path, lang_hint="ko")
 
             # 파싱 결과 검증
@@ -241,7 +241,7 @@ async def upload(file: UploadFile = File(...)):
                 raise HTTPException(status_code=400, detail="No meaningful content extracted from file")
 
             # 임베딩 생성
-            from embedding.embedder import embed_texts
+            from backend.embedding.embedder import embed_texts
 
             logger.info(f"Generating embeddings for {len(valid_chunks)} chunks from {file.filename}")
 
@@ -383,8 +383,8 @@ async def search_endpoint(
         search_type: 검색 유형 (vector, hybrid, rerank)
     """
     try:
-        from embedding.embedder import embed_texts
-        from retriever.retriever import search, hybrid_search, search_with_rerank
+        from backend.embedding.embedder import embed_texts
+        from backend.retriever.retriever import search, hybrid_search, search_with_rerank
 
         # 쿼리 전처리
         processed_query = q.strip()
@@ -481,8 +481,8 @@ async def rag_answer(
 ):
     """RAG 기반 답변 생성 (한국어 최적화)"""
     try:
-        from embedding.embedder import embed_texts
-        from retriever.retriever import search, hybrid_search, search_with_rerank
+        from backend.embedding.embedder import embed_texts
+        from backend.retriever.retriever import search, hybrid_search, search_with_rerank
 
         # 쿼리 전처리 및 언어 감지
         processed_query = q.strip()
@@ -574,7 +574,7 @@ async def rag_answer(
 
         # 3. LLM으로 답변 생성
         try:
-            from llm.generator import generate_answer
+            from backend.llm.generator import generate_answer
 
             # 한국어 질문인 경우 한국어 답변을 위한 시스템 프롬프트 사용
             if detected_lang == "ko":
@@ -637,7 +637,7 @@ async def get_task_status(task_id: str):
 async def health_check():
     """시스템 상태 확인 (한국어 지원 정보 포함)"""
     try:
-        from llm.generator import check_ollama_connection
+        from backend.llm.generator import check_ollama_connection
 
         # Qdrant 상태
         try:
@@ -677,7 +677,7 @@ async def health_check():
 
         # 임베딩 모델 상태
         try:
-            from embedding.embedder import get_model_info
+            from backend.embedding.embedder import get_model_info
             embedding_info = get_model_info()
             embedding_status = "ready"
         except Exception as e:
@@ -747,7 +747,7 @@ async def upload_debug(request: Request, file: UploadFile = File(...)):
                 temp_path = tmp_file.name
 
             try:
-                from ingestion.parser import parse_pdf
+                from backend.ingestion.parser import parse_pdf
                 chunks = parse_pdf(temp_path, lang_hint="ko")
 
                 debug_info.update({
@@ -841,7 +841,7 @@ async def search_suggestions(q: str = Query(..., min_length=1)):
 async def get_collection_stats():
     """벡터 컬렉션 통계 조회"""
     try:
-        from retriever.retriever import get_collection_stats
+        from backend.retriever.retriever import get_collection_stats
         return get_collection_stats()
     except Exception as e:
         logger.error(f"Collection stats retrieval failed: {e}")
@@ -882,8 +882,8 @@ async def batch_search(
 ):
     """배치 검색 (여러 쿼리 동시 검색)"""
     try:
-        from embedding.embedder import embed_texts
-        from retriever.retriever import search
+        from backend.embedding.embedder import embed_texts
+        from backend.retriever.retriever import search
 
         if not queries:
             raise HTTPException(status_code=400, detail="No queries provided")

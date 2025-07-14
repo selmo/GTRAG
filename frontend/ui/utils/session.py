@@ -3,7 +3,7 @@
 Streamlit 세션 상태를 효율적으로 관리하기 위한 헬퍼 함수들
 """
 import streamlit as st
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from datetime import datetime
 import json
 
@@ -22,7 +22,7 @@ class SessionManager:
         if 'uploaded_files' not in st.session_state or not st.session_state.uploaded_files:
             try:
                 # 순환 의존성 방지를 위해 지연 import
-                from ui.utils.api_client import APIClient
+                from frontend.ui.utils.api_client import APIClient
                 docs = APIClient().list_documents()  # 백엔드에서 최신 목록 수집
 
                 # 누락 필드 기본값 보강 (표시 오류 방지)

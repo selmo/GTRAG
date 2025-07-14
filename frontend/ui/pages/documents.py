@@ -5,14 +5,13 @@ import streamlit as st
 import sys
 from pathlib import Path
 import pandas as pd
-from datetime import datetime
-from ui.utils.streamlit_helpers import rerun
+from frontend.ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from ui.utils.api_client import APIClient
-from ui.components.uploader import render_file_uploader, get_upload_summary
+from frontend.ui.utils.api_client import APIClient
+from frontend.ui.components.uploader import render_file_uploader, get_upload_summary
 
 # 페이지 설정
 st.set_page_config(

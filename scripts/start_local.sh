@@ -72,7 +72,7 @@ fi
 # 4. 의존성 설치
 echo -e "\n${BLUE}📚 Python 패키지 설치 확인...${NC}"
 
-# requirements.txt 파일 확인
+# requirements-frontend.txt 파일 확인
 if [ ! -f "requirements.txt" ]; then
     echo -e "${RED}❌ requirements.txt 파일을 찾을 수 없습니다.${NC}"
     exit 1
@@ -106,7 +106,7 @@ if [ ${#missing_packages[@]} -ne 0 ]; then
     echo -e "${YELLOW}⚠️  누락된 패키지가 있습니다. 설치 중...${NC}"
     echo "누락된 패키지: ${missing_packages[*]}"
 
-    pip install -r requirements.txt
+    pip install -r requirements-frontend.txt
 
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✅ 패키지 설치가 완료되었습니다.${NC}"

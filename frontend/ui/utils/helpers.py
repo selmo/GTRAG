@@ -9,7 +9,7 @@ import re
 import hashlib
 import mimetypes
 from pathlib import Path
-from ui.utils.streamlit_helpers import rerun
+from frontend.ui.utils.streamlit_helpers import rerun
 
 
 def format_file_size(size_bytes: int) -> str:

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 import requests
 from typing import Dict, Any
-from ui.utils.streamlit_helpers import rerun
+from frontend.ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent))

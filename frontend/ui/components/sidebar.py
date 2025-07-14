@@ -3,8 +3,8 @@
 """
 import streamlit as st
 from datetime import datetime
-from typing import Dict, Optional
-from ui.utils.streamlit_helpers import rerun
+from typing import Dict
+from frontend.ui.utils.streamlit_helpers import rerun
 
 
 def render_sidebar(api_client):

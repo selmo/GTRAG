@@ -1,0 +1,94 @@
+# GTOne RAG - 백엔드 의존성
+# FastAPI 기반 API 서버 + AI/ML 파이프라인
+
+# --- Core Web Framework ---
+fastapi==0.115.0                # REST API 서버
+uvicorn[standard]==0.30.6       # ASGI 서버
+python-multipart==0.0.12        # 파일 업로드 지원
+
+# --- Data Models & Validation ---
+pydantic==2.8.2                 # 데이터 모델 및 검증
+pydantic-core==2.20.1           # pydantic 핵심 기능
+
+# --- AI/ML Core ---
+sentence-transformers==3.0.1    # E5 다국어 임베딩 모델
+numpy==1.26.4                   # 수치 연산 기본
+torch>=2.0.0                   # PyTorch (sentence-transformers 의존성)
+
+# --- Vector Database ---
+qdrant-client==1.10.1           # Qdrant 벡터 DB 클라이언트
+
+# --- Background Task Processing ---
+celery==5.3.6                   # 비동기 작업 큐
+redis==5.0.8                    # Redis 클라이언트 (Celery 브로커)
+
+# --- Document Processing Core ---
+unstructured==0.14.10           # 문서 구조 분석
+
+# --- PDF Processing (한국어 최적화) ---
+# 우선순위 1: pdfplumber (한국어 PDF에 가장 좋음)
+pdfplumber==0.11.0              # 테이블과 텍스트 추출에 강함
+
+# 우선순위 2: PyMuPDF (빠르고 안정적)
+PyMuPDF==1.24.5                # 빠른 PDF 처리, 한국어 지원 양호
+
+# 우선순위 3: pypdf (PyPDF2 후속)
+pypdf==4.3.1                   # 가벼운 PDF 처리
+
+# PDF 의존성
+pdfminer.six==20231228          # pdfplumber 의존성
+cryptography==42.0.7           # PDF 암호화 지원
+
+# --- OCR (택1 또는 두 개 모두) ---
+# Tesseract 로컬 OCR
+pytesseract==0.3.10
+
+# Azure Vision API (선택적)
+# azure-ai-vision==1.0.0        # Azure 인지 서비스 (선택적)
+
+# --- Word Document Support ---
+python-docx==1.1.0             # Word 문서 파싱
+
+# --- Text Processing & Encoding ---
+chardet==5.2.0                 # 문자 인코딩 자동 감지
+ftfy==6.1.1                    # 텍스트 인코딩 문제 해결
+
+# --- HTTP Client (External APIs) ---
+requests==2.32.3                # HTTP 클라이언트 (Ollama API 호출)
+
+# --- Image Processing ---
+Pillow==10.4.0                  # 이미지 처리 (OCR용)
+
+# --- Utilities ---
+pathlib2==2.3.7                # 경로 처리 유틸리티
+typing-extensions==4.12.2      # 타입 힌트 확장
+
+# --- Development & Debugging ---
+python-dotenv==1.0.1           # .env 파일 지원 (개발용)
+
+# --- Performance & Optimization ---
+# uvloop==0.19.0                # 빠른 이벤트 루프 (Linux/macOS만)
+
+# --- Security ---
+passlib[bcrypt]==1.7.4          # 패스워드 해싱 (인증 시 사용)
+python-jose[cryptography]==3.3.0 # JWT 토큰 처리 (인증 시 사용)
+
+# --- API Documentation ---
+# FastAPI 자동 포함되는 의존성들:
+# - swagger-ui-bundle (API 문서 UI)
+# - redoc (ReDoc API 문서)
+
+# --- Database (선택적) ---
+# sqlalchemy==2.0.23            # ORM (필요시)
+# alembic==1.13.1               # DB 마이그레이션 (필요시)
+
+# --- Monitoring & Logging ---
+# python-json-logger==2.0.7     # 구조화된 로깅 (선택적)
+
+# --- 호환성 보장 ---
+setuptools>=65.0.0              # 패키지 설치 도구
+wheel>=0.38.0                   # 바이너리 패키지 지원
+
+# --- 최소 버전 명시 ---
+# Python >= 3.11 필요
+# CUDA 지원 시 torch GPU 버전 별도 설치 필요

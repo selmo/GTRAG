@@ -1,9 +1,9 @@
 from typing import List
-from fastapi import APIRouter, UploadFile, File, Depends, Query
-from ingestion.parser import parse_pdf
-from ingestion.ocr import extract_text
-from embedding.embedder import embed_texts
-from retriever.retriever import search as vector_search
+from fastapi import APIRouter, UploadFile, File, Query
+from backend.ingestion.parser import parse_pdf
+from backend.ingestion.ocr import extract_text
+from backend.embedding.embedder import embed_texts
+from backend.retriever.retriever import search as vector_search
 from uuid import uuid4
 from .schemas import UploadResponse, SearchResponse, SearchHit
 import qdrant_client

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 import time
 import requests
-from ui.utils.streamlit_helpers import rerun
+from frontend.ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 # 프로젝트 루트를 Python 경로에 추가
@@ -15,11 +15,11 @@ project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from ui.utils.api_client import APIClient
-from ui.utils.session import SessionManager
-from ui.components.sidebar import render_sidebar
-from ui.components.chatting import render_chat_history, handle_chat_input
-from ui.components.uploader import get_upload_summary
+from frontend.ui.utils.api_client import APIClient
+from frontend.ui.utils.session import SessionManager
+from frontend.ui.components.sidebar import render_sidebar
+from frontend.ui.components.chatting import render_chat_history, handle_chat_input
+from frontend.ui.components.uploader import get_upload_summary
 
 # 페이지 설정 - 가장 먼저 호출되어야 함
 st.set_page_config(
@@ -341,7 +341,7 @@ def render_main_app():
             for msg in recent_messages:
                 st.write(f"💬 {msg['content'][:100]}...")
                 if 'timestamp' in msg:
-                    from ui.utils.helpers import format_timestamp
+                    from frontend.ui.utils.helpers import format_timestamp
                     st.caption(format_timestamp(msg['timestamp']))
         else:
             st.info("아직 대화 기록이 없습니다.")
