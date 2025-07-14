@@ -239,6 +239,8 @@ mkdir -p logs
 # 9. 서비스 시작
 echo -e "\n${BLUE}🚀 백엔드 서비스 시작...${NC}"
 
+export PYTHONPATH=$(pwd):$PYTHONPATH
+
 # FastAPI 서버 시작
 echo "   1. FastAPI 서버 시작 중..."
 echo "      Conda 환경: $CONDA_ENV_NAME"
