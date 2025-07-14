@@ -36,10 +36,10 @@ fi
 
 echo -e "${GREEN}✅ 백엔드 디렉토리 확인됨${NC}"
 
-# 2. GTRAG-Backend Conda 환경 확인/생성
-echo -e "\n${BLUE}📦 GTRAG-Backend Conda 환경 설정...${NC}"
+# 2. GTRAG Conda 환경 확인/생성
+echo -e "\n${BLUE}📦 GTRAG Conda 환경 설정...${NC}"
 
-CONDA_ENV_NAME="GTRAG-Backend"
+CONDA_ENV_NAME="GTRAG"
 
 if conda env list | grep -q "^$CONDA_ENV_NAME "; then
     echo -e "${GREEN}✅ $CONDA_ENV_NAME 환경이 이미 존재합니다.${NC}"

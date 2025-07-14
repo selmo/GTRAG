@@ -62,9 +62,9 @@ else
 fi
 
 # 2. GTRAG-Frontend Conda 환경 확인/생성
-echo -e "\n${BLUE}📦 GTRAG-Frontend Conda 환경 설정...${NC}"
+echo -e "\n${BLUE}📦 GTRAG Conda 환경 설정...${NC}"
 
-CONDA_ENV_NAME="GTRAG-Frontend"
+CONDA_ENV_NAME="GTRAG"
 
 if conda env list | grep -q "^$CONDA_ENV_NAME "; then
     echo -e "${GREEN}✅ $CONDA_ENV_NAME 환경이 이미 존재합니다.${NC}"
