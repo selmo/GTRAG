@@ -43,7 +43,7 @@ echo "   PYTHONPATH: $PYTHONPATH"
 
 # 5. 의존성 설치
 echo -e "\n${BLUE}📚 의존성 설치 확인...${NC}"
-REQ_FILE="backend/scripts/requirements-backend.txt"
+REQ_FILE="backend/requirements-backend.txt"
 if [[ -f "$REQ_FILE" ]]; then
     pip install -r "$REQ_FILE" || exit 1
 else
