@@ -28,8 +28,8 @@ fi
 echo -e "${GREEN}✅ Conda 버전: $(conda --version)${NC}"
 
 # 현재 디렉토리가 backend인지 확인
-if [[ ! -f "api/main.py" ]]; then
-    echo -e "${RED}❌ backend 디렉토리에서 실행해주세요.${NC}"
+if [[ ! -f "backend/api/main.py" ]]; then
+    echo -e "${RED}❌ 프로젝트 디렉토리에서 실행해주세요.${NC}"
     echo "현재 위치: $(pwd)"
     exit 1
 fi
