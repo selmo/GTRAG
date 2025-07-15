@@ -416,12 +416,12 @@ echo -e "   📊 컨테이너 상태: docker ps"
 echo -e "   📋 로그 확인:"
 echo -e "      - Qdrant: docker logs qdrant-service"
 echo -e "      - Redis: docker logs redis-service"
-echo -e "   🛑 인프라 종료: ./scripts/stop_infra.sh"
+echo -e "   🛑 인프라 종료: ./infrastructure/scripts/stop_infra.sh"
 
 echo -e "\n${YELLOW}🔗 다음 단계:${NC}"
-echo -e "   1. 백엔드 시작: cd ../backend && ./scripts/start_backend.sh"
-echo -e "   2. 프론트엔드 시작: cd ../frontend && ./scripts/start_frontend.sh"
-echo -e "   3. 또는 전체 시스템: cd .. && ./scripts/start_all.sh"
+echo -e "   1. 백엔드 시작: ./backend/scripts/start_backend.sh"
+echo -e "   2. 프론트엔드 시작: ./frontend/scripts/start_frontend.sh"
+echo -e "   3. 또는 전체 시스템: ./scripts/start_all.sh"
 
 echo -e "\n${GREEN}✨ 인프라 서비스 실행 중! ✨${NC}"
 

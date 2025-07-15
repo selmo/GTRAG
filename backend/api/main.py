@@ -13,6 +13,9 @@ from datetime import datetime
 import logging
 import re
 from typing import Dict, List
+from backend.llm.ollama_client import get_ollama_client
+from backend.embedding.embedder import embed_texts
+from backend.retriever.retriever import search, hybrid_search, search_with_rerank
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -70,8 +73,8 @@ app.add_middleware(
 # Celery 앱 생성
 celery_app = Celery(
     'backend.api.main',
-    broker=os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0'),
-    backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+    broker=os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0'),
+    backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
 )
 
 # Celery 설정
@@ -481,8 +484,10 @@ async def rag_answer(
 ):
     """RAG 기반 답변 생성 (한국어 최적화)"""
     try:
-        from backend.embedding.embedder import embed_texts
-        from backend.retriever.retriever import search, hybrid_search, search_with_rerank
+        # 디버깅 로그 추가
+        logger.info(f"=== RAG DEBUG ===")
+        logger.info(f"Query: '{q}'")
+        logger.info(f"Parameters: top_k={top_k}, search_type={search_type}, min_score={min_score}")
 
         # 쿼리 전처리 및 언어 감지
         processed_query = q.strip()
@@ -490,11 +495,12 @@ async def rag_answer(
             raise HTTPException(status_code=400, detail="Empty question")
 
         detected_lang = "ko" if re.search(r'[가-힣]', processed_query) else "en"
-        logger.info(f"RAG query: '{processed_query}' (language: {detected_lang})")
+        logger.info(f"Detected language: {detected_lang}")
 
         # 1. 벡터 검색
         try:
             qvec = embed_texts([processed_query], prefix="query")[0]
+            logger.info(f"Query vector generated successfully, dimension: {len(qvec)}")
         except Exception as e:
             logger.error(f"Query embedding failed: {e}")
             return {
@@ -504,7 +510,16 @@ async def rag_answer(
                 "sources": []
             }
 
+        # ✅ 검색 전 컬렉션 상태 확인
+        try:
+            collection_info = qdrant.get_collection("chunks")
+            logger.info(f"Collection status: {collection_info.vectors_count} total vectors")
+        except Exception as e:
+            logger.error(f"Failed to get collection info: {e}")
+
         # 검색 수행
+        logger.info(f"Performing {search_type} search...")
+
         if search_type == "hybrid":
             hits = hybrid_search(
                 query_text=processed_query,
@@ -527,6 +542,33 @@ async def rag_answer(
                 min_score=min_score
             )
 
+        # ✅ 검색 결과 상세 로그
+        logger.info(f"Search completed: {len(hits)} results found")
+
+        if hits:
+            for i, hit in enumerate(hits[:3]):  # 처음 3개 결과만 로그
+                content_preview = hit.payload.get("content", "")[:100] + "..."
+                logger.info(f"  Result {i + 1}: score={hit.score:.4f}, content='{content_preview}'")
+        else:
+            logger.warning(f"No search results found!")
+            logger.warning(
+                f"Search parameters used: query='{processed_query}', top_k={top_k}, min_score={min_score}, search_type={search_type}, lang={detected_lang}")
+
+            # ✅ 더 관대한 조건으로 재검색 시도
+            logger.info("Attempting search with more lenient parameters...")
+            relaxed_hits = search(
+                qvec=qvec,
+                top_k=10,  # 더 많은 결과
+                lang=None,  # 언어 필터 제거
+                min_score=0.1  # 더 낮은 임계값
+            )
+            logger.info(f"Relaxed search found {len(relaxed_hits)} results")
+
+            if relaxed_hits:
+                # 관대한 조건으로 찾은 결과가 있으면 사용
+                hits = relaxed_hits[:top_k]
+                logger.info(f"Using relaxed search results: {len(hits)} results")
+
         # 검색 결과가 없는 경우
         if not hits:
             return {
@@ -536,7 +578,12 @@ async def rag_answer(
                 "search_info": {
                     "total_results": 0,
                     "search_type": search_type,
-                    "language": detected_lang
+                    "language": detected_lang,
+                    "debug_info": {
+                        "min_score_used": min_score,
+                        "top_k_used": top_k,
+                        "processed_query": processed_query
+                    }
                 }
             }
 
@@ -544,21 +591,60 @@ async def rag_answer(
         contexts = []
         sources = []
 
+        logger.info(f"Processing {len(hits)} search results")
+
         for hit in hits:
             content = hit.payload.get("content", "")
             if content and len(content.strip()) > 10:
                 contexts.append(content)
 
+                # ✅ 컨텍스트 길이 제한 (타임아웃 방지)
+                max_context_length = 800  # 각 컨텍스트 최대 800자
+                if len(content) > max_context_length:
+                    # 처음과 끝 부분을 유지하면서 중간 생략
+                    start_part = content[:400]
+                    end_part = content[-300:]
+                    truncated_content = f"{start_part}\n...(중간 생략)...\n{end_part}"
+                    contexts.append(truncated_content)
+                    logger.info(f"Context truncated from {len(content)} to {len(truncated_content)} chars")
+                else:
+                    contexts.append(content)
+
                 # 소스 정보 정리
                 source_info = {
                     "chunk_id": hit.id,
-                    "content": content[:300] + "..." if len(content) > 300 else content,
+                    "content": content[:200] + "..." if len(content) > 200 else content,
                     "score": round(float(hit.score), 4),
                     "source": hit.payload.get("source", "Unknown"),
                     "page": hit.payload.get("page"),
                     "type": hit.payload.get("type", "document")
                 }
                 sources.append(source_info)
+
+        # ✅ 전체 컨텍스트 길이 제한
+        total_context_length = sum(len(c) for c in contexts)
+        max_total_length = 2500  # 전체 컨텍스트 최대 2500자
+
+        if total_context_length > max_total_length:
+            logger.info(f"Total context too long ({total_context_length} chars), reducing to top contexts")
+
+            # 상위 3개 컨텍스트만 사용
+            contexts = contexts[:3]
+            sources = sources[:3]
+
+            # 각 컨텍스트를 더 짧게 제한
+            shortened_contexts = []
+            for ctx in contexts:
+                if len(ctx) > 600:
+                    shortened_contexts.append(ctx[:600] + "...")
+                else:
+                    shortened_contexts.append(ctx)
+            contexts = shortened_contexts
+
+            new_total = sum(len(c) for c in contexts)
+            logger.info(f"Context reduced to {new_total} chars with {len(contexts)} contexts")
+
+        logger.info(f"Final contexts prepared: {len(contexts)} contexts, {sum(len(c) for c in contexts)} total chars")
 
         if not contexts:
             return {
@@ -1142,6 +1228,351 @@ async def get_version():
         "korean_optimization": True,
         "last_updated": "2024-12-01"
     }
+
+
+# Ollama 클라이언트 초기화
+ollama_client = get_ollama_client()
+
+
+@app.get("/v1/models")
+async def list_models():
+    """사용 가능한 LLM 모델 목록 조회"""
+    try:
+        models = ollama_client.list_models()
+
+        # 모델 이름만 추출
+        model_names = []
+        for model in models:
+            name = model.get("name", "")
+            if name:
+                model_names.append(name)
+
+        logger.info(f"Retrieved {len(model_names)} models from Ollama")
+
+        return {
+            "models": model_names,
+            "total": len(model_names)
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve models: {e}")
+        # 기본 모델 목록 반환
+        default_models = [
+            "llama3:8b-instruct",
+            "llama3:70b-instruct",
+            "mistral:7b-instruct",
+            "mixtral:8x7b-instruct",
+            "phi:2.7b",
+            "gemma:7b"
+        ]
+        return {
+            "models": default_models,
+            "total": len(default_models),
+            "error": str(e),
+            "fallback": True
+        }
+
+
+@app.get("/v1/models/{model_name}")
+async def get_model_info(model_name: str):
+    """특정 모델의 상세 정보 조회 (선택적)"""
+    try:
+        model_info = ollama_client.get_model_info(model_name)
+
+        if "error" in model_info:
+            raise HTTPException(status_code=404, detail=f"Model {model_name} not found")
+
+        # 응답 정리
+        response = {
+            "name": model_name,
+            "modelfile": model_info.get("modelfile", ""),
+            "parameters": model_info.get("parameters", ""),
+            "template": model_info.get("template", ""),
+        }
+
+        # 상세 정보가 있으면 추가
+        if "details" in model_info:
+            details = model_info["details"]
+            response.update({
+                "size": details.get("size", 0),
+                "digest": details.get("digest", ""),
+                "modified_at": details.get("modified_at", ""),
+                "details": details
+            })
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get model info for {model_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/v1/models/status")
+async def get_models_status():
+    """모델 서버 상태 및 통계"""
+    try:
+        connection_info = ollama_client.check_connection()
+
+        models = ollama_client.list_models()
+        model_stats = {
+            "total_models": len(models),
+            "total_size": 0,
+            "models_by_family": {}
+        }
+
+        # 모델 통계 계산
+        for model in models:
+            size = model.get("size", 0)
+            model_stats["total_size"] += size
+
+            # 모델 패밀리별 분류
+            name = model.get("name", "")
+            family = name.split(":")[0] if ":" in name else "unknown"
+
+            if family not in model_stats["models_by_family"]:
+                model_stats["models_by_family"][family] = {
+                    "count": 0,
+                    "total_size": 0,
+                    "models": []
+                }
+
+            model_stats["models_by_family"][family]["count"] += 1
+            model_stats["models_by_family"][family]["total_size"] += size
+            model_stats["models_by_family"][family]["models"].append(name)
+
+        # 크기를 읽기 좋은 형식으로 변환
+        def format_size(bytes_size):
+            if bytes_size == 0:
+                return "0 B"
+            for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                if bytes_size < 1024.0:
+                    return f"{bytes_size:.1f} {unit}"
+                bytes_size /= 1024.0
+            return f"{bytes_size:.1f} PB"
+
+        model_stats["total_size_formatted"] = format_size(model_stats["total_size"])
+
+        return {
+            "connection": connection_info,
+            "statistics": model_stats,
+            "server_info": {
+                "host": ollama_client.base_url,
+                "status": connection_info.get("status", "unknown")
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get models status: {e}")
+        return {
+            "connection": {"status": "error", "error": str(e)},
+            "statistics": {"total_models": 0},
+            "server_info": {"status": "error"}
+        }
+
+
+@app.get("/v1/health")
+async def health_check():
+    """시스템 상태 확인 (한국어 지원 정보 포함)"""
+    try:
+        # 1. Qdrant 상태 확인
+        qdrant_status = "unknown"
+        collections = []
+        korean_ratio = 0
+
+        try:
+            qdrant_info = qdrant.get_collections()
+            qdrant_status = "connected"
+            collections = [c.name for c in qdrant_info.collections]
+            logger.info(f"Qdrant connected, found {len(collections)} collections")
+
+            # 한국어 문서 통계
+            if "chunks" in collections:
+                try:
+                    sample_points = qdrant.scroll(
+                        collection_name="chunks",
+                        limit=100,
+                        with_payload=True
+                    )[0]
+
+                    if sample_points:
+                        korean_docs = sum(1 for p in sample_points if p.payload.get("has_korean", False))
+                        total_docs = len(sample_points)
+                        korean_ratio = korean_docs / total_docs if total_docs > 0 else 0
+                        logger.info(f"Korean content ratio: {korean_ratio:.2%}")
+                except Exception as e:
+                    logger.warning(f"Failed to calculate Korean content ratio: {e}")
+
+        except Exception as e:
+            logger.error(f"Qdrant connection failed: {e}")
+            qdrant_status = "disconnected"
+
+        # 2. Ollama 상태 확인
+        ollama_status_info = {"status": "unknown", "host": "unknown", "models": [], "total_models": 0}
+
+        try:
+            ollama_status_info = ollama_client.check_connection()
+            logger.info(
+                f"Ollama status: {ollama_status_info.get('status')} with {ollama_status_info.get('total_models', 0)} models")
+        except Exception as e:
+            logger.error(f"Ollama connection check failed: {e}")
+            ollama_status_info = {
+                "status": "disconnected",
+                "host": getattr(ollama_client, 'base_url', 'unknown'),
+                "error": str(e),
+                "models": [],
+                "total_models": 0
+            }
+
+        # 3. Celery 상태 확인
+        celery_status = "unknown"
+        worker_count = 0
+
+        try:
+            celery_inspect = celery_app.control.inspect()
+            active_workers = celery_inspect.active()
+
+            if active_workers:
+                celery_status = "connected"
+                worker_count = len(active_workers)
+                logger.info(f"Celery connected with {worker_count} active workers")
+            else:
+                celery_status = "disconnected"
+                logger.warning("Celery: No active workers found")
+
+        except Exception as e:
+            logger.error(f"Celery connection check failed: {e}")
+            celery_status = "disconnected"
+
+        # 4. 임베딩 모델 상태 확인
+        embedding_status = "unknown"
+        embedding_info = {}
+
+        try:
+            from backend.embedding.embedder import get_model_info
+            embedding_info = get_model_info()
+            embedding_status = "ready"
+            logger.info("Embedding model ready")
+        except Exception as e:
+            logger.error(f"Embedding model check failed: {e}")
+            embedding_info = {"error": str(e)}
+            embedding_status = "error"
+
+        # 5. 전체 시스템 상태 결정
+        critical_services = [qdrant_status, ollama_status_info.get("status")]
+        optional_services = [celery_status, embedding_status]
+
+        if all(status == "connected" or status == "ready" for status in critical_services + optional_services):
+            overall_status = "healthy"
+        elif all(status == "connected" for status in critical_services):
+            overall_status = "degraded"  # 주요 서비스는 정상, 보조 서비스에 문제
+        else:
+            overall_status = "unhealthy"  # 주요 서비스에 문제
+
+        # 6. 응답 데이터 구성
+        response_data = {
+            "status": overall_status,
+            "timestamp": datetime.utcnow().isoformat(),
+            "services": {
+                "qdrant": {
+                    "status": qdrant_status,
+                    "collections": collections,
+                    "total_collections": len(collections),
+                    "korean_content_ratio": round(korean_ratio, 3)
+                },
+                "ollama": {
+                    "status": ollama_status_info.get("status", "unknown"),
+                    "host": ollama_status_info.get("host", "unknown"),
+                    "total_models": ollama_status_info.get("total_models", 0),
+                    "models": ollama_status_info.get("models", [])[:5]  # 처음 5개만 표시
+                },
+                "celery": {
+                    "status": celery_status,
+                    "active_workers": worker_count
+                },
+                "embedding": {
+                    "status": embedding_status,
+                    "model_info": embedding_info if embedding_status == "ready" else None
+                }
+            },
+            "features": {
+                "korean_support": True,
+                "korean_content_detected": korean_ratio > 0.1,
+                "pdf_parsing_libraries": ["pdfplumber", "PyMuPDF", "pypdf"],
+                "search_types": ["vector", "hybrid", "rerank"],
+                "supported_formats": [".pdf", ".docx", ".txt", ".png", ".jpg", ".jpeg"],
+                "async_processing": celery_status == "connected"
+            },
+            "statistics": {
+                "total_collections": len(collections),
+                "available_models": ollama_status_info.get("total_models", 0),
+                "korean_content_ratio": round(korean_ratio, 3),
+                "active_workers": worker_count
+            }
+        }
+
+        # 7. 오류 및 경고 정보 추가
+        if overall_status == "unhealthy":
+            issues = []
+
+            if qdrant_status != "connected":
+                issues.append({
+                    "service": "qdrant",
+                    "severity": "critical",
+                    "message": "Vector database connection failed"
+                })
+
+            if ollama_status_info.get("status") != "connected":
+                issues.append({
+                    "service": "ollama",
+                    "severity": "critical",
+                    "message": "Language model server connection failed",
+                    "error": ollama_status_info.get("error")
+                })
+
+            response_data["issues"] = issues
+
+        elif overall_status == "degraded":
+            warnings = []
+
+            if celery_status != "connected":
+                warnings.append("Background task processing unavailable")
+
+            if embedding_status != "ready":
+                warnings.append("Embedding model has issues")
+
+            if ollama_status_info.get("total_models", 0) == 0:
+                warnings.append("No language models available")
+
+            if warnings:
+                response_data["warnings"] = warnings
+
+        # 8. 로깅 및 반환
+        logger.info(f"Health check completed - Status: {overall_status}")
+        return response_data
+
+    except Exception as e:
+        logger.error(f"Health check failed with unexpected error: {e}")
+
+        # 최소한의 응답 반환
+        return {
+            "status": "error",
+            "timestamp": datetime.utcnow().isoformat(),
+            "message": f"Health check system error: {str(e)}",
+            "services": {
+                "qdrant": {"status": "unknown"},
+                "ollama": {"status": "unknown"},
+                "celery": {"status": "unknown"},
+                "embedding": {"status": "unknown"}
+            },
+            "features": {
+                "korean_support": True,
+                "pdf_parsing_libraries": ["pdfplumber", "PyMuPDF", "pypdf"],
+                "search_types": ["vector", "hybrid", "rerank"],
+                "supported_formats": [".pdf", ".docx", ".txt", ".png", ".jpg"]
+            }
+        }
 
 
 if __name__ == "__main__":

@@ -7,19 +7,32 @@ import sys
 from pathlib import Path
 import time
 import requests
-from frontend.ui.utils.streamlit_helpers import rerun
 
-# 프로젝트 루트를 Python 경로에 추가
-# 프로젝트 루트를 Python 경로에 추가
-project_root = Path(__file__).parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+# 프로젝트 루트를 Python 경로에 추가 (GTRAG 루트에서 실행 고려)
+current_file = Path(__file__).resolve()
+ui_dir = current_file.parent
+frontend_dir = ui_dir.parent
+project_root = frontend_dir.parent
 
-from frontend.ui.utils.api_client import APIClient
-from frontend.ui.utils.session import SessionManager
-from frontend.ui.components.sidebar import render_sidebar
-from frontend.ui.components.chatting import render_chat_history, handle_chat_input
-from frontend.ui.components.uploader import get_upload_summary
+# Python path에 필요한 경로들 추가
+for path in [str(frontend_dir), str(project_root)]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+# 이제 import 가능
+try:
+    from ui.utils.api_client import APIClient
+    from ui.utils.session import SessionManager
+    from ui.components.sidebar import render_sidebar
+    from ui.components.chatting import render_chat_history, handle_chat_input
+    from ui.components.uploader import get_upload_summary
+    from ui.utils.streamlit_helpers import rerun
+except ImportError as e:
+    st.error(f"모듈 import 오류: {e}")
+    st.error("현재 Python 경로:")
+    for p in sys.path:
+        st.write(f"  - {p}")
+    st.stop()
 
 # 페이지 설정 - 가장 먼저 호출되어야 함
 st.set_page_config(
@@ -274,8 +287,8 @@ def render_main_app():
 
             handle_chat_input(
                 api_client,
-                top_k=rag_settings.get('top_k', 3),
-                model=settings.get('llm', {}).get('model')
+                top_k=rag_settings.get('top_k', 5),  # ✅ 기본값을 5로 증가
+                model=settings.get('llm', {}).get('model'),
             )
 
         # 채팅 숨기기 버튼
@@ -341,7 +354,7 @@ def render_main_app():
             for msg in recent_messages:
                 st.write(f"💬 {msg['content'][:100]}...")
                 if 'timestamp' in msg:
-                    from frontend.ui.utils.helpers import format_timestamp
+                    from ui.utils.helpers import format_timestamp
                     st.caption(format_timestamp(msg['timestamp']))
         else:
             st.info("아직 대화 기록이 없습니다.")

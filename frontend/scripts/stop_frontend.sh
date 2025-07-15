@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "🛑 GTOne RAG - 프론트엔드 UI 종료"
-echo "==============================="
+echo "=================================="
 
 # 색상 정의
 RED='\033[0;31m'
@@ -10,283 +10,266 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# 종료 시작 시간 기록
-STOP_START_TIME=$(date)
-echo "종료 시작 시간: $STOP_START_TIME"
+# 경로 설정
+SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+FRONTEND_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$FRONTEND_DIR")"
 
-# 1. 현재 디렉토리 확인
-if [[ ! -f "ui/Home.py" ]]; then
-    echo -e "${RED}❌ frontend 디렉토리에서 실행해주세요.${NC}"
-    echo "현재 위치: $(pwd)"
-    exit 1
+echo -e "\n${BLUE}📁 경로 확인...${NC}"
+echo "   프로젝트 루트: $PROJECT_ROOT"
+echo "   프론트엔드 디렉토리: $FRONTEND_DIR"
+
+# 현재 디렉토리 확인
+CURRENT_DIR="$(pwd)"
+echo "   현재 실행 디렉토리: $CURRENT_DIR"
+
+# GTRAG 루트에서 실행되었는지 확인
+if [[ ! -d "frontend" ]] || [[ ! -d "backend" ]]; then
+    echo -e "${YELLOW}⚠️  GTRAG 프로젝트 루트에서 실행하는 것을 권장합니다.${NC}"
+    echo "현재 위치: $CURRENT_DIR"
+    echo "권장 실행: cd /path/to/GTRAG && frontend/scripts/stop_frontend.sh"
 fi
 
-echo -e "${GREEN}✅ 프론트엔드 디렉토리 확인됨${NC}"
-
-# 2. PID 파일에서 프로세스 종료
-echo -e "\n${BLUE}📋 등록된 프로세스 종료 중...${NC}"
-
-stop_streamlit_service() {
-    local pidfile=".streamlit.pid"
-    local timeout=15
-
-    if [[ -f "$pidfile" ]]; then
-        PID=$(cat "$pidfile")
-        echo -n "   Streamlit 서비스 (PID: $PID) 종료 중... "
-
-        # 프로세스가 실제로 실행 중인지 확인
-        if kill -0 "$PID" 2>/dev/null; then
-            # SIGTERM으로 정상 종료 시도
-            kill "$PID" 2>/dev/null
-
-            # 지정된 시간만큼 대기
-            for i in $(seq 1 $timeout); do
-                if ! kill -0 "$PID" 2>/dev/null; then
-                    echo -e "${GREEN}완료${NC}"
-                    break
-                fi
-                sleep 1
-            done
-
-            # 여전히 실행 중이면 강제 종료
-            if kill -0 "$PID" 2>/dev/null; then
-                echo -e "${YELLOW}강제 종료${NC}"
-                kill -9 "$PID" 2>/dev/null
-                sleep 1
-            fi
-        else
-            echo -e "${YELLOW}이미 종료됨${NC}"
-        fi
-
-        rm "$pidfile"
-    else
-        echo "   Streamlit PID 파일 없음"
-    fi
+# frontend 디렉토리로 이동
+cd "$FRONTEND_DIR" || {
+    echo -e "${RED}❌ 프론트엔드 디렉토리로 이동할 수 없습니다: $FRONTEND_DIR${NC}"
+    exit 1
 }
 
-stop_streamlit_service
+echo -e "${GREEN}✅ 프론트엔드 디렉토리로 이동: $(pwd)${NC}"
 
-# 3. 포트 기반 프로세스 정리
-echo -e "\n${BLUE}🔍 포트 기반 프로세스 정리...${NC}"
+# 서비스 정보 파일 확인
+if [[ -f ".frontend_info" ]]; then
+    echo -e "\n${BLUE}📋 기존 서비스 정보 확인...${NC}"
 
-# 기본 Streamlit 포트들 확인
-STREAMLIT_PORTS=(8501 8502 8503)
+    # 서비스 정보 읽기
+    source .frontend_info 2>/dev/null || true
 
-cleanup_streamlit_port() {
-    local port=$1
+    if [[ -n "$STREAMLIT_PID" ]]; then
+        echo "   저장된 PID: $STREAMLIT_PID"
+        echo "   Conda 환경: $CONDA_ENV"
+        echo "   서비스 URL: $STREAMLIT_URL"
+    fi
+else
+    echo -e "\n${YELLOW}⚠️  서비스 정보 파일이 없습니다.${NC}"
+fi
 
-    echo -n "   포트 $port (Streamlit) 확인... "
+# 1. PID 파일로 프로세스 종료
+echo -e "\n${BLUE}🔍 실행 중인 Streamlit 프로세스 확인...${NC}"
 
-    if lsof -i:$port > /dev/null 2>&1; then
-        echo -e "${YELLOW}사용 중${NC}"
-        echo "      프로세스 정리 중..."
+processes_killed=0
 
-        # 프로세스 ID 찾기
-        PIDS=$(lsof -ti:$port)
+if [[ -f ".streamlit.pid" ]]; then
+    PID=$(cat ".streamlit.pid")
+    echo "   PID 파일에서 찾은 프로세스: $PID"
 
-        for PID in $PIDS; do
-            echo "      PID $PID 종료 중..."
-            # 정상 종료 시도
-            kill "$PID" 2>/dev/null
+    if kill -0 "$PID" 2>/dev/null; then
+        echo -n "   프로세스 $PID 종료 중... "
+
+        # SIGTERM 시도
+        kill "$PID" 2>/dev/null
+        sleep 3
+
+        # 프로세스가 여전히 살아있으면 SIGKILL
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "강제 종료"
+            kill -9 "$PID" 2>/dev/null
+            sleep 1
+        else
+            echo "정상 종료"
+        fi
+
+        processes_killed=$((processes_killed + 1))
+    else
+        echo "   프로세스 $PID가 이미 종료되었습니다."
+    fi
+
+    # PID 파일 삭제
+    rm ".streamlit.pid"
+    echo "   PID 파일 삭제됨"
+else
+    echo "   PID 파일이 없습니다."
+fi
+
+# 2. 포트 기반으로 프로세스 찾기
+echo -e "\n${BLUE}🔍 포트 기반 프로세스 검색...${NC}"
+
+# 기본 포트들 확인
+PORTS_TO_CHECK=(8501 8502 8503)
+
+# 환경변수에서 포트 가져오기
+if [[ -n "$STREAMLIT_SERVER_PORT" ]]; then
+    PORTS_TO_CHECK=("$STREAMLIT_SERVER_PORT" "${PORTS_TO_CHECK[@]}")
+fi
+
+for port in "${PORTS_TO_CHECK[@]}"; do
+    echo -n "   포트 $port 확인... "
+
+    # lsof로 포트 사용 프로세스 찾기
+    if command -v lsof &> /dev/null; then
+        PIDs=$(lsof -ti:$port 2>/dev/null)
+
+        if [[ -n "$PIDs" ]]; then
+            echo "프로세스 발견"
+
+            for pid in $PIDs; do
+                # 프로세스 정보 확인
+                if ps -p $pid -o comm= | grep -q streamlit; then
+                    echo "     Streamlit 프로세스 $pid 종료 중..."
+
+                    # SIGTERM 시도
+                    kill $pid 2>/dev/null
+                    sleep 2
+
+                    # 강제 종료
+                    if kill -0 $pid 2>/dev/null; then
+                        kill -9 $pid 2>/dev/null
+                        echo "     강제 종료됨"
+                    else
+                        echo "     정상 종료됨"
+                    fi
+
+                    processes_killed=$((processes_killed + 1))
+                else
+                    echo "     비-Streamlit 프로세스 $pid (건너뜀)"
+                fi
+            done
+        else
+            echo "사용 안함"
+        fi
+    else
+        echo "lsof 명령어 없음"
+    fi
+done
+
+# 3. 이름 기반으로 Streamlit 프로세스 찾기
+echo -e "\n${BLUE}🔍 이름 기반 Streamlit 프로세스 검색...${NC}"
+
+if command -v pgrep &> /dev/null; then
+    streamlit_pids=$(pgrep -f "streamlit.*ui/Home.py\|streamlit.*streamlit_app.py" 2>/dev/null)
+
+    if [[ -n "$streamlit_pids" ]]; then
+        echo "   발견된 Streamlit 프로세스들:"
+
+        for pid in $streamlit_pids; do
+            cmd=$(ps -p $pid -o args= 2>/dev/null)
+            echo "     PID $pid: $cmd"
+
+            echo -n "     종료 중... "
+            kill $pid 2>/dev/null
             sleep 2
 
-            # 여전히 실행 중이면 강제 종료
-            if kill -0 "$PID" 2>/dev/null; then
-                echo "      PID $PID 강제 종료..."
-                kill -9 "$PID" 2>/dev/null
+            if kill -0 $pid 2>/dev/null; then
+                kill -9 $pid 2>/dev/null
+                echo "강제 종료"
+            else
+                echo "정상 종료"
             fi
+
+            processes_killed=$((processes_killed + 1))
         done
     else
-        echo -e "${GREEN}정리됨${NC}"
+        echo "   이름 기반으로 찾은 Streamlit 프로세스가 없습니다."
     fi
-}
+else
+    echo "   pgrep 명령어가 없습니다."
+fi
 
-# 모든 Streamlit 포트 정리
-for port in "${STREAMLIT_PORTS[@]}"; do
-    cleanup_streamlit_port $port
+# 4. 정리 작업
+echo -e "\n${BLUE}🧹 정리 작업...${NC}"
+
+# 임시 파일들 정리
+temp_files=(
+    ".streamlit.pid"
+    ".frontend_info"
+    "nohup.out"
+)
+
+for file in "${temp_files[@]}"; do
+    if [[ -f "$file" ]]; then
+        rm "$file"
+        echo "   $file 삭제됨"
+    fi
 done
 
-# 4. 프로세스명 기반 추가 정리
-echo -e "\n${BLUE}🧹 프로세스명 기반 추가 정리...${NC}"
+# 로그 파일은 유지하되 rotate
+if [[ -f "logs/streamlit.log" ]]; then
+    if [[ -s "logs/streamlit.log" ]]; then
+        # 로그 파일이 비어있지 않으면 백업
+        timestamp=$(date +"%Y%m%d_%H%M%S")
+        mv "logs/streamlit.log" "logs/streamlit_${timestamp}.log"
+        echo "   로그 파일이 logs/streamlit_${timestamp}.log로 백업됨"
 
-# Streamlit 프로세스 찾기
-echo -n "   Streamlit 프로세스 확인... "
-STREAMLIT_PIDS=$(pgrep -f "streamlit.*ui/" 2>/dev/null)
-if [[ -n "$STREAMLIT_PIDS" ]]; then
-    echo -e "${YELLOW}발견됨${NC}"
-    for PID in $STREAMLIT_PIDS; do
-        echo "      Streamlit PID $PID 종료..."
-        kill -9 "$PID" 2>/dev/null
-    done
-else
-    echo -e "${GREEN}없음${NC}"
+        # 오래된 로그 파일들 정리 (10개 이상이면 오래된 것 삭제)
+        log_count=$(ls logs/streamlit_*.log 2>/dev/null | wc -l)
+        if [[ $log_count -gt 10 ]]; then
+            ls -t logs/streamlit_*.log | tail -n +11 | xargs rm -f
+            echo "   오래된 로그 파일들 정리됨"
+        fi
+    else
+        rm "logs/streamlit.log"
+        echo "   빈 로그 파일 삭제됨"
+    fi
 fi
 
-# 일반적인 Streamlit 프로세스 찾기
-echo -n "   일반 Streamlit 프로세스 확인... "
-GENERAL_STREAMLIT_PIDS=$(pgrep -f "streamlit.*run" 2>/dev/null)
-if [[ -n "$GENERAL_STREAMLIT_PIDS" ]]; then
-    echo -e "${YELLOW}발견됨${NC}"
-    for PID in $GENERAL_STREAMLIT_PIDS; do
-        echo "      Streamlit PID $PID 종료..."
-        kill -9 "$PID" 2>/dev/null
-    done
-else
-    echo -e "${GREEN}없음${NC}"
+# 5. Conda 환경 정리 (선택적)
+if [[ -n "$CONDA_ENV" ]]; then
+    echo -e "\n${BLUE}🐍 Conda 환경 관리...${NC}"
+    echo "   현재 Conda 환경: $CONDA_ENV"
+
+    # 환경 비활성화는 스크립트에서는 의미가 없으므로 안내만
+    echo "   Conda 환경을 비활성화하려면: conda deactivate"
+    echo "   환경을 완전히 제거하려면: conda env remove -n $CONDA_ENV"
 fi
 
-# Python UI 관련 프로세스 찾기
-echo -n "   Python UI 프로세스 확인... "
-PYTHON_UI_PIDS=$(pgrep -f "python.*ui/" 2>/dev/null)
-if [[ -n "$PYTHON_UI_PIDS" ]]; then
-    echo -e "${YELLOW}발견됨${NC}"
-    for PID in $PYTHON_UI_PIDS; do
-        echo "      Python UI PID $PID 종료..."
-        kill -9 "$PID" 2>/dev/null
-    done
-else
-    echo -e "${GREEN}없음${NC}"
-fi
+# 6. 최종 상태 확인
+echo -e "\n${BLUE}📊 종료 후 상태 확인...${NC}"
 
-# 5. 최종 포트 상태 확인
-echo -e "\n${BLUE}📊 최종 포트 상태 확인...${NC}"
-
-check_final_port_status() {
-    local port=$1
-
+# 포트 상태 재확인
+for port in "${PORTS_TO_CHECK[@]}"; do
     echo -n "   포트 $port: "
     if lsof -i:$port > /dev/null 2>&1; then
-        echo -e "${RED}여전히 사용 중${NC}"
-        return 1
+        echo -e "${YELLOW}여전히 사용 중${NC}"
     else
-        echo -e "${GREEN}정리됨${NC}"
-        return 0
-    fi
-}
-
-all_ports_clear=true
-for port in "${STREAMLIT_PORTS[@]}"; do
-    check_final_port_status $port || all_ports_clear=false
-done
-
-# 6. 임시 파일 정리
-echo -e "\n${BLUE}🗑️ 임시 파일 정리...${NC}"
-
-# PID 파일들 정리
-for pidfile in .streamlit.pid; do
-    if [[ -f "$pidfile" ]]; then
-        echo "   $pidfile 삭제..."
-        rm "$pidfile"
+        echo -e "${GREEN}사용 가능${NC}"
     fi
 done
 
-# 프론트엔드 정보 파일 정리
-if [[ -f ".frontend_info" ]]; then
-    echo "   .frontend_info 삭제..."
-    rm ".frontend_info"
-fi
+# 남은 Streamlit 프로세스 확인
+if command -v pgrep &> /dev/null; then
+    remaining_streamlit=$(pgrep -f streamlit 2>/dev/null | wc -l)
+    echo "   남은 Streamlit 프로세스: $remaining_streamlit개"
 
-# Streamlit 캐시 정리 (선택적)
-echo -n "   Streamlit 캐시 정리... "
-if [[ -d ".streamlit" ]]; then
-    cache_files=$(find .streamlit -name "*.cache" 2>/dev/null | wc -l)
-    if [[ $cache_files -gt 0 ]]; then
-        echo -e "${YELLOW}$cache_files 개 캐시 파일 발견${NC}"
-        echo "   캐시 파일을 삭제하시겠습니까? (y/n)"
-        read -r response
-        if [[ "$response" =~ ^[Yy]$ ]]; then
-            find .streamlit -name "*.cache" -delete 2>/dev/null
-            echo -e "      ${GREEN}캐시 파일 삭제됨${NC}"
-        else
-            echo -e "      ${BLUE}캐시 파일 보존됨${NC}"
-        fi
-    else
-        echo -e "${GREEN}없음${NC}"
-    fi
-else
-    echo -e "${GREEN}없음${NC}"
-fi
-
-# 7. 가상환경 상태 안내
-echo -e "\n${BLUE}🐍 가상환경 상태...${NC}"
-if [[ "$VIRTUAL_ENV" ]]; then
-    echo -e "   현재 가상환경: ${GREEN}$VIRTUAL_ENV${NC}"
-    echo -e "   ${YELLOW}deactivate${NC} 명령으로 가상환경을 비활성화할 수 있습니다."
-else
-    echo "   가상환경 없음"
-fi
-
-# 8. 로그 파일 관리
-echo -e "\n${BLUE}📋 로그 파일 관리...${NC}"
-
-if [[ -d "logs" ]]; then
-    log_count=$(find logs -name "*.log" 2>/dev/null | wc -l)
-    if [[ $log_count -gt 0 ]]; then
-        echo "   $log_count 개의 로그 파일이 있습니다."
-
-        # 최근 로그 파일 정보 표시
-        if [[ -f "logs/streamlit.log" ]]; then
-            log_size=$(du -h logs/streamlit.log 2>/dev/null | cut -f1)
-            echo "   - streamlit.log: ${log_size:-unknown}"
-        fi
-
-        echo "   로그 파일을 삭제하시겠습니까? (y/n)"
-        read -r response
-        if [[ "$response" =~ ^[Yy]$ ]]; then
-            rm -f logs/*.log
-            echo -e "   ${GREEN}로그 파일이 삭제되었습니다.${NC}"
-        else
-            echo -e "   ${BLUE}로그 파일이 보존되었습니다.${NC}"
-            echo "   로그 확인: tail -f logs/streamlit.log"
-        fi
-    else
-        echo "   로그 파일 없음"
+    if [[ $remaining_streamlit -gt 0 ]]; then
+        echo -e "${YELLOW}   ⚠️  일부 Streamlit 프로세스가 남아있을 수 있습니다.${NC}"
+        echo "   수동 확인: ps aux | grep streamlit"
+        echo "   수동 종료: pkill -f streamlit"
     fi
 fi
 
-# 9. 백엔드 서비스 상태 확인 (참고용)
-echo -e "\n${BLUE}🔗 백엔드 서비스 상태 확인...${NC}"
+# 7. 완료 메시지
+echo -e "\n${GREEN}✅ GTOne RAG 프론트엔드 종료 완료!${NC}"
 
-# API 서버 상태 (참고용)
-API_URL=${API_BASE_URL:-"http://localhost:18000"}
-echo -n "   백엔드 API 서버: "
-if curl -s --connect-timeout 3 "$API_URL/docs" > /dev/null 2>&1; then
-    echo -e "${GREEN}실행 중${NC} ($API_URL)"
+if [[ $processes_killed -gt 0 ]]; then
+    echo -e "${GREEN}   $processes_killed개의 프로세스가 종료되었습니다.${NC}"
 else
-    echo -e "${YELLOW}중지됨${NC} 또는 연결 불가"
+    echo -e "${YELLOW}   종료할 실행 중인 프로세스가 없었습니다.${NC}"
 fi
 
-# 10. 브라우저 탭 정리 안내
-echo -e "\n${BLUE}🌐 브라우저 정리 안내...${NC}"
-echo "   브라우저에서 다음 탭들을 닫으실 수 있습니다:"
-for port in "${STREAMLIT_PORTS[@]}"; do
-    echo "   - http://localhost:$port"
-done
+echo -e "\n${YELLOW}📋 종료 후 정보:${NC}"
+echo -e "   📁 로그 위치: $FRONTEND_DIR/logs/"
+echo -e "   🔧 설정 위치: $FRONTEND_DIR/.streamlit/"
+echo -e "   🐍 Conda 환경: ${CONDA_ENV:-"환경 정보 없음"}"
 
-# 11. 최종 결과
-echo -e "\n${GREEN}✅ GTOne RAG 프론트엔드 서비스 종료 완료!${NC}"
+echo -e "\n${YELLOW}💡 다시 시작하려면:${NC}"
+echo -e "   cd $PROJECT_ROOT"
+echo -e "   frontend/scripts/start_frontend.sh"
 
-if $all_ports_clear; then
-    echo -e "\n${GREEN}🎉 모든 프론트엔드 포트가 정리되었습니다.${NC}"
-else
-    echo -e "\n${YELLOW}⚠️  일부 포트가 여전히 사용 중입니다.${NC}"
-    echo "강제 정리가 필요하면 다음 명령을 실행하세요:"
-    echo "   sudo lsof -ti:8501,8502,8503 | xargs sudo kill -9"
-fi
+echo -e "\n${YELLOW}🧹 추가 정리 명령어:${NC}"
+echo -e "   전체 로그 삭제: rm -rf $FRONTEND_DIR/logs/*"
+echo -e "   설정 초기화: rm -rf $FRONTEND_DIR/.streamlit/"
+echo -e "   Conda 환경 제거: conda env remove -n ${CONDA_ENV:-"GTRAG"}"
 
-echo -e "\n${BLUE}📊 종료 요약:${NC}"
-echo "   종료 시작: $STOP_START_TIME"
-echo "   종료 완료: $(date)"
-echo "   다음 시작: ./scripts/start_frontend.sh"
-
-echo -e "\n${YELLOW}💡 참고 사항:${NC}"
-echo "   - 백엔드 서비스는 독립적으로 실행됩니다"
-echo "   - 전체 시스템 종료는 백엔드와 인프라도 별도로 종료하세요"
-echo "   - 설정 파일과 로그는 보존되었습니다"
-
-echo -e "\n${YELLOW}🔄 다음 실행 시:${NC}"
-echo "   1. 백엔드 확인: curl http://localhost:18000/docs"
-echo "   2. 프론트엔드 시작: ./scripts/start_frontend.sh"
-echo "   3. 브라우저에서 http://localhost:8501 접속"
-
-echo -e "\n${GREEN}✨ 프론트엔드 서비스 정리 완료! ✨${NC}"
+# 정리 완료 확인
+echo -e "\n${BLUE}정리가 완료되었습니다. 안전하게 종료할 수 있습니다.${NC}"

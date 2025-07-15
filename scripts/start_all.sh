@@ -3,14 +3,25 @@
 echo "🚀 GTOne RAG - 전체 시스템 시작"
 echo "==============================="
 
-# 색상 정의
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# 공통 함수 로드
+if [[ -f "scripts/common.sh" ]]; then
+    source "scripts/common.sh"
+    init_common
+else
+    # 공통 함수가 없는 경우 기본 색상만 정의
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    PURPLE='\033[0;35m'
+    CYAN='\033[0;36m'
+    NC='\033[0m'
+
+    log_info() { echo -e "${BLUE}ℹ️ $1${NC}"; }
+    log_success() { echo -e "${GREEN}✅ $1${NC}"; }
+    log_warning() { echo -e "${YELLOW}⚠️ $1${NC}"; }
+    log_error() { echo -e "${RED}❌ $1${NC}"; }
+fi
 
 # 시작 시간 기록
 OVERALL_START_TIME=$(date)
@@ -18,17 +29,17 @@ echo "전체 시작 시간: $OVERALL_START_TIME"
 
 # 프로젝트 루트 디렉토리 확인
 if [[ ! -d "infrastructure" || ! -d "backend" || ! -d "frontend" ]]; then
-    echo -e "${RED}❌ 프로젝트 루트 디렉토리에서 실행해주세요.${NC}"
+    log_error "프로젝트 루트 디렉토리에서 실행해주세요."
     echo "현재 위치: $(pwd)"
     echo "필요한 디렉토리: infrastructure/, backend/, frontend/"
     ls -la | grep -E "(infrastructure|backend|frontend)" || echo "관련 디렉토리가 없습니다."
     exit 1
 fi
 
-echo -e "${GREEN}✅ 프로젝트 루트 디렉토리 확인됨${NC}"
+log_success "프로젝트 루트 디렉토리 확인됨"
 
 # 1. 시스템 환경 확인
-echo -e "\n${BLUE}🔍 시스템 환경 확인...${NC}"
+log_info "시스템 환경 확인..."
 
 # 필수 도구 확인
 required_tools=("docker" "python" "curl")
@@ -41,22 +52,22 @@ for tool in "${required_tools[@]}"; do
 done
 
 if [[ ${#missing_tools[@]} -gt 0 ]]; then
-    echo -e "${RED}❌ 필수 도구가 설치되지 않았습니다: ${missing_tools[*]}${NC}"
+    log_error "필수 도구가 설치되지 않았습니다: ${missing_tools[*]}"
     exit 1
 fi
 
-echo -e "${GREEN}✅ 필수 도구 확인 완료${NC}"
+log_success "필수 도구 확인 완료"
 
 # Docker 데몬 확인
 if ! docker info > /dev/null 2>&1; then
-    echo -e "${RED}❌ Docker 데몬이 실행되지 않았습니다.${NC}"
+    log_error "Docker 데몬이 실행되지 않았습니다."
     exit 1
 fi
 
-echo -e "${GREEN}✅ Docker 데몬 실행 중${NC}"
+log_success "Docker 데몬 실행 중"
 
 # 2. 시작 옵션 확인
-echo -e "\n${BLUE}⚙️ 시작 옵션...${NC}"
+log_info "시작 옵션..."
 
 # 기본 옵션
 SKIP_INFRA=false
@@ -100,7 +111,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo -e "${YELLOW}⚠️  알 수 없는 옵션: $1${NC}"
+            log_warning "알 수 없는 옵션: $1"
             shift
             ;;
     esac
@@ -114,7 +125,7 @@ echo "   프론트엔드: $(if $SKIP_FRONTEND; then echo "건너뛰기"; else ec
 echo "   병렬 처리: $(if $PARALLEL_START; then echo "활성화"; else echo "순차 처리"; fi)"
 
 # 3. 기존 프로세스 정리 (선택적)
-echo -e "\n${BLUE}🧹 기존 프로세스 정리...${NC}"
+log_info "기존 프로세스 정리..."
 
 cleanup_existing() {
     echo "기존 GTOne RAG 프로세스를 정리하시겠습니까? (y/n)"
@@ -138,7 +149,7 @@ cleanup_existing() {
             cd infrastructure && ./scripts/stop_infra.sh > /dev/null 2>&1 && cd ..
         fi
 
-        echo -e "   ${GREEN}✅ 기존 프로세스 정리 완료${NC}"
+        log_success "기존 프로세스 정리 완료"
         sleep 2
     fi
 }
@@ -151,7 +162,7 @@ if lsof -i:18000 > /dev/null 2>&1; then running_services+=("API:18000"); fi
 if lsof -i:8501 > /dev/null 2>&1; then running_services+=("UI:8501"); fi
 
 if [[ ${#running_services[@]} -gt 0 ]]; then
-    echo -e "${YELLOW}⚠️  실행 중인 서비스 발견: ${running_services[*]}${NC}"
+    log_warning "실행 중인 서비스 발견: ${running_services[*]}"
     cleanup_existing
 fi
 
@@ -173,16 +184,16 @@ if [[ $SKIP_INFRA == false ]]; then
         cd ..
 
         if [[ $infra_exit_code -eq 0 ]]; then
-            echo -e "${GREEN}✅ 인프라 서비스 시작 완료${NC}"
+            log_success "인프라 서비스 시작 완료"
         else
-            echo -e "${RED}❌ 인프라 서비스 시작 실패${NC}"
+            log_error "인프라 서비스 시작 실패"
             if [[ ! $VERBOSE ]]; then
                 echo "로그 확인: cat /tmp/infra_start.log"
             fi
             exit 1
         fi
     else
-        echo -e "${RED}❌ 인프라 시작 스크립트를 찾을 수 없습니다${NC}"
+        log_error "인프라 시작 스크립트를 찾을 수 없습니다"
         exit 1
     fi
 
@@ -206,25 +217,25 @@ if [[ $SKIP_BACKEND == false ]]; then
         cd backend
 
         if $VERBOSE; then
-            ./scripts/_start_backend.sh
+            ./scripts/start_backend.sh  # ✅ 수정된 파일명
         else
-            ./scripts/_start_backend.sh > /tmp/backend_start.log 2>&1
+            ./scripts/start_backend.sh > /tmp/backend_start.log 2>&1  # ✅ 수정된 파일명
         fi
 
         backend_exit_code=$?
         cd ..
 
         if [[ $backend_exit_code -eq 0 ]]; then
-            echo -e "${GREEN}✅ 백엔드 서비스 시작 완료${NC}"
+            log_success "백엔드 서비스 시작 완료"
         else
-            echo -e "${RED}❌ 백엔드 서비스 시작 실패${NC}"
+            log_error "백엔드 서비스 시작 실패"
             if [[ ! $VERBOSE ]]; then
                 echo "로그 확인: cat /tmp/backend_start.log"
             fi
             exit 1
         fi
     else
-        echo -e "${RED}❌ 백엔드 시작 스크립트를 찾을 수 없습니다${NC}"
+        log_error "백엔드 시작 스크립트를 찾을 수 없습니다"
         exit 1
     fi
 
@@ -268,16 +279,16 @@ if [[ $SKIP_FRONTEND == false ]]; then
         cd ..
 
         if [[ $frontend_exit_code -eq 0 ]]; then
-            echo -e "${GREEN}✅ 프론트엔드 서비스 시작 완료${NC}"
+            log_success "프론트엔드 서비스 시작 완료"
         else
-            echo -e "${RED}❌ 프론트엔드 서비스 시작 실패${NC}"
+            log_error "프론트엔드 서비스 시작 실패"
             if [[ ! $VERBOSE ]]; then
                 echo "로그 확인: cat /tmp/frontend_start.log"
             fi
             exit 1
         fi
     else
-        echo -e "${RED}❌ 프론트엔드 시작 스크립트를 찾을 수 없습니다${NC}"
+        log_error "프론트엔드 시작 스크립트를 찾을 수 없습니다"
         exit 1
     fi
 
@@ -359,7 +370,7 @@ else
 fi
 
 # 9. 최종 결과 및 접속 정보
-echo -e "\n${GREEN}🎉 GTOne RAG 시스템 시작 완료!${NC}"
+log_success "GTOne RAG 시스템 시작 완료!"
 echo "==============================="
 
 # 시작 시간 정보

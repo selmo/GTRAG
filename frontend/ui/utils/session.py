@@ -61,7 +61,7 @@ class SessionManager:
         """기본 AI 설정 반환"""
         return {
             "llm": {
-                "model": "llama3:8b-instruct",
+                "model": "gemma3:27b",
                 "temperature": 0.3,
                 "max_tokens": 1000,
                 "top_p": 0.9,
@@ -69,8 +69,8 @@ class SessionManager:
                 "system_prompt": "당신은 문서 기반 질의응답 시스템입니다."
             },
             "rag": {
-                "top_k": 3,
-                "min_similarity": 0.5,
+                "top_k": 5,
+                "min_similarity": 0.1,
                 "context_window": 3000,
                 "chunk_size": 500,
                 "chunk_overlap": 50,

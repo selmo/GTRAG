@@ -27,43 +27,63 @@ def render_sources(sources: List[Dict]):
                 st.divider()
 
 
-def handle_chat_input(api_client, top_k: int = 3, model: Optional[str] = None):
+def handle_chat_input(api_client, top_k: int = 5,  # ✅ 기본값을 5로 증가
+                      model: Optional[str] = None,
+                      min_score: float = 0.3,  # ✅ 추가
+                      search_type: str = "hybrid"):  # ✅ 추가
     """채팅 입력 처리"""
     if prompt := st.chat_input("질문을 입력하세요..."):
         # 사용자 메시지 추가
         st.session_state.messages.append({"role": "user", "content": prompt})
-        
+
         with st.chat_message("user"):
             st.markdown(prompt)
-        
+
         # AI 응답 생성
         with st.chat_message("assistant"):
             with st.spinner("답변 생성 중..."):
                 try:
-                    # RAG 답변 요청
-                    result = api_client.generate_answer(prompt, top_k=top_k, model=model)
-                    
+                    # ✅ 추가 파라미터와 함께 RAG 답변 요청
+                    result = api_client.generate_answer(
+                        prompt,
+                        top_k=top_k,
+                        model=model,
+                        min_score=0.3,  # ✅ 추가
+                        search_type="hybrid"  # ✅ 추가
+                    )
+
                     if 'error' not in result:
                         # 답변 표시
                         st.markdown(result['answer'])
-                        
+
+                        # ✅ 검색 정보 표시 (디버깅용)
+                        if 'search_info' in result:
+                            search_info = result['search_info']
+                            total_results = search_info.get('total_results', 0)
+                            search_type_used = search_info.get('search_type', 'unknown')
+
+                            if total_results > 0:
+                                st.success(f"🔍 {total_results}개 관련 문서를 찾았습니다 (검색 타입: {search_type_used})")
+                            else:
+                                st.warning(f"⚠️ 관련 문서를 찾지 못했습니다 (검색 타입: {search_type_used})")
+
                         # 메시지 저장
                         message_data = {
                             "role": "assistant",
                             "content": result['answer'],
                             "timestamp": datetime.now().isoformat()
                         }
-                        
+
                         # 소스가 있으면 추가
                         if 'sources' in result and result['sources']:
                             message_data['sources'] = result['sources']
                             render_sources(result['sources'])
-                        
+
                         st.session_state.messages.append(message_data)
-                        
+
                     else:
                         handle_error(result.get('error', '알 수 없는 오류'))
-                        
+
                 except Exception as e:
                     handle_error(str(e))
 

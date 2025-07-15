@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class APIClient:
     """GTOne RAG System API 클라이언트"""
 
-    def __init__(self, base_url: str = None, timeout: int = 30):
+    def __init__(self, base_url: str = None, timeout: int = 300):
         """
         API 클라이언트 초기화
 
@@ -190,10 +190,13 @@ class APIClient:
             logger.error(f"Search failed: {str(e)}")
             return []
 
+
     def generate_answer(self, query: str, top_k: int = 3,
                         model: Optional[str] = None,
                         temperature: Optional[float] = None,
-                        system_prompt: Optional[str] = None) -> Dict:
+                        system_prompt: Optional[str] = None,
+                        min_score: Optional[float] = None,  # ✅ 추가
+                        search_type: Optional[str] = None) -> Dict:  # ✅ 추가
         """
         RAG 답변 생성
 
@@ -203,6 +206,8 @@ class APIClient:
             model: 사용할 LLM 모델
             temperature: 생성 온도
             system_prompt: 시스템 프롬프트
+            min_score: 최소 유사도 점수 (기본값: 0.3)
+            search_type: 검색 타입 (vector, hybrid, rerank)
 
         Returns:
             답변 결과 (answer, sources, question)
@@ -213,7 +218,11 @@ class APIClient:
                 "top_k": top_k
             }
 
-            # 선택적 파라미터 추가
+            # ✅ 누락된 파라미터들 추가
+            if min_score is not None:
+                params["min_score"] = min_score
+            if search_type is not None:
+                params["search_type"] = search_type
             if model:
                 params["model"] = model
             if temperature is not None:
@@ -221,16 +230,35 @@ class APIClient:
             if system_prompt:
                 params["system_prompt"] = system_prompt
 
+            # ✅ 디버깅을 위한 로그 추가
+            logger.info(f"RAG request params: {params}")
+
             response = self._make_request(
                 "POST",
                 "/v1/rag/answer",
-                params=params
+                params=params,
+                timeout=300
             )
 
             result = response.json()
+            logger.info(f"RAG request params: {params}")
+
+            # ✅ 응답 로그 추가
+            if "search_info" in result:
+                search_info = result["search_info"]
+                logger.info(f"RAG response: {search_info.get('total_results', 0)} results found")
+
             logger.info(f"Answer generated for query: '{query}'")
             return result
 
+        except requests.exceptions.Timeout:
+            logger.error(f"RAG request timeout after 300 seconds")
+            return {
+                "error": "응답 시간 초과",
+                "question": query,
+                "answer": "죄송합니다. 답변 생성에 시간이 너무 오래 걸려 중단되었습니다. 더 짧은 질문이나 구체적인 질문을 시도해보세요.",
+                "sources": []
+            }
         except Exception as e:
             logger.error(f"Answer generation failed: {str(e)}")
             return {
@@ -430,7 +458,140 @@ class APIClient:
         """컨텍스트 매니저 종료"""
         self.close()
 
+    # api_client.py에 추가할 메서드들
 
+    def get_model_info(self, model_name: str) -> Dict:
+        """
+        특정 모델의 상세 정보 조회
+
+        Args:
+            model_name: 모델 이름
+
+        Returns:
+            모델 정보 딕셔너리
+        """
+        try:
+            response = self._make_request("GET", f"/v1/models/{model_name}")
+            return response.json()
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve model info for {model_name}: {str(e)}")
+            return {"error": str(e)}
+
+    def pull_model(self, model_name: str) -> Dict:
+        """
+        모델 다운로드/풀
+
+        Args:
+            model_name: 다운로드할 모델 이름
+
+        Returns:
+            다운로드 상태
+        """
+        try:
+            response = self._make_request(
+                "POST",
+                "/v1/models/pull",
+                json={"name": model_name}
+            )
+            return response.json()
+
+        except Exception as e:
+            logger.error(f"Failed to pull model {model_name}: {str(e)}")
+            return {"error": str(e), "success": False}
+
+    def delete_model(self, model_name: str) -> Dict:
+        """
+        모델 삭제
+
+        Args:
+            model_name: 삭제할 모델 이름
+
+        Returns:
+            삭제 결과
+        """
+        try:
+            response = self._make_request("DELETE", f"/v1/models/{model_name}")
+            return response.json()
+
+        except Exception as e:
+            logger.error(f"Failed to delete model {model_name}: {str(e)}")
+            return {"error": str(e), "success": False}
+
+    def get_available_models(self) -> List[str]:
+        """
+        사용 가능한 LLM 모델 목록 조회
+
+        Returns:
+            모델 이름 리스트
+        """
+        try:
+            response = self._make_request("GET", "/v1/models")
+            result = response.json()
+
+            # 응답 형식에 따라 처리
+            if isinstance(result, list):
+                models = result
+            elif isinstance(result, dict):
+                # 새로운 API 응답 형식
+                if 'models' in result:
+                    models = result['models']
+                elif 'model_list' in result:
+                    models = result['model_list']
+                else:
+                    models = []
+            else:
+                models = []
+
+            logger.info(f"Retrieved {len(models)} available models")
+            return models
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve models: {str(e)}")
+            # 기본 모델 목록 반환
+            return [
+                "llama3:8b-instruct",
+                "llama3:70b-instruct",
+                "mistral:7b-instruct",
+                "mixtral:8x7b-instruct",
+                "phi:2.7b",
+                "gemma:7b"
+            ]
+
+    def get_model_info(self, model_name: str) -> Dict:
+        """
+        특정 모델의 상세 정보 조회 (선택적)
+
+        Args:
+            model_name: 모델 이름
+
+        Returns:
+            모델 정보 딕셔너리
+        """
+        try:
+            response = self._make_request("GET", f"/v1/models/{model_name}")
+            return response.json()
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve model info for {model_name}: {str(e)}")
+            return {"error": str(e)}
+
+    def get_models_status(self) -> Dict:
+        """
+        모델 서버 상태 및 통계 조회
+
+        Returns:
+            모델 서버 상태 정보
+        """
+        try:
+            response = self._make_request("GET", "/v1/models/status")
+            return response.json()
+
+        except Exception as e:
+            logger.error(f"Failed to get models status: {str(e)}")
+            return {"error": str(e)}
+
+    
 # 간단한 사용을 위한 싱글톤 인스턴스
 _default_client = None
 
@@ -462,3 +623,12 @@ def generate_answer(query: str, top_k: int = 3, model: Optional[str] = None) -> 
 def health_check() -> Dict:
     """시스템 상태 확인 (기본 클라이언트 사용)"""
     return get_default_client().health_check()
+
+
+def get_available_models() -> List[str]:
+    """사용 가능한 모델 목록 조회 (기본 클라이언트 사용)"""
+    return get_default_client().get_available_models()
+
+def get_model_info(model_name: str) -> Dict:
+    """모델 정보 조회 (기본 클라이언트 사용)"""
+    return get_default_client().get_model_info(model_name)
