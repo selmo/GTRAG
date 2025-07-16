@@ -11,7 +11,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # 시작 시간 기록
-START_TIME=$(date)
+START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 echo "시작 시간: $START_TIME"
 
 # 1. 환경 확인

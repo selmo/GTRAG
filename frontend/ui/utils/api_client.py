@@ -1,5 +1,5 @@
 """
-API 클라이언트 유틸리티
+API 클라이언트 유틸리티 - 개선된 버전
 Streamlit UI에서 백엔드 API와 통신하기 위한 클라이언트
 """
 import requests
@@ -36,7 +36,11 @@ class APIClient:
 
         logger.info(f"API Client initialized with base URL: {self.base_url}")
 
-    # ui/utils/api_client.py
+    def set_timeout(self, timeout: int):
+        """타임아웃 설정 변경"""
+        self.timeout = timeout
+        logger.info(f"Timeout updated to {timeout} seconds")
+
     def list_documents(self) -> List[Dict]:
         try:
             res = self._make_request("GET", "/v1/documents")
@@ -190,13 +194,13 @@ class APIClient:
             logger.error(f"Search failed: {str(e)}")
             return []
 
-
     def generate_answer(self, query: str, top_k: int = 3,
                         model: Optional[str] = None,
                         temperature: Optional[float] = None,
                         system_prompt: Optional[str] = None,
-                        min_score: Optional[float] = None,  # ✅ 추가
-                        search_type: Optional[str] = None) -> Dict:  # ✅ 추가
+                        min_score: Optional[float] = None,
+                        search_type: Optional[str] = None,
+                        timeout: Optional[int] = None) -> Dict:
         """
         RAG 답변 생성
 
@@ -208,6 +212,7 @@ class APIClient:
             system_prompt: 시스템 프롬프트
             min_score: 최소 유사도 점수 (기본값: 0.3)
             search_type: 검색 타입 (vector, hybrid, rerank)
+            timeout: 요청 타임아웃 (초)
 
         Returns:
             답변 결과 (answer, sources, question)
@@ -218,32 +223,39 @@ class APIClient:
                 "top_k": top_k
             }
 
-            # ✅ 누락된 파라미터들 추가
-            if min_score is not None:
-                params["min_score"] = min_score
-            if search_type is not None:
-                params["search_type"] = search_type
+            # 모델 파라미터 추가
             if model:
                 params["model"] = model
+                logger.info(f"Using model: {model}")
+
             if temperature is not None:
                 params["temperature"] = temperature
+
             if system_prompt:
                 params["system_prompt"] = system_prompt
 
-            # ✅ 디버깅을 위한 로그 추가
+            if min_score is not None:
+                params["min_score"] = min_score
+
+            if search_type is not None:
+                params["search_type"] = search_type
+
+            # 타임아웃 설정
+            request_timeout = timeout or self.timeout
+
             logger.info(f"RAG request params: {params}")
+            logger.info(f"Using timeout: {request_timeout} seconds")
 
             response = self._make_request(
                 "POST",
                 "/v1/rag/answer",
                 params=params,
-                timeout=300
+                timeout=request_timeout
             )
 
             result = response.json()
-            logger.info(f"RAG request params: {params}")
 
-            # ✅ 응답 로그 추가
+            # 응답 로그 추가
             if "search_info" in result:
                 search_info = result["search_info"]
                 logger.info(f"RAG response: {search_info.get('total_results', 0)} results found")
@@ -252,7 +264,7 @@ class APIClient:
             return result
 
         except requests.exceptions.Timeout:
-            logger.error(f"RAG request timeout after 300 seconds")
+            logger.error(f"RAG request timeout after {request_timeout} seconds")
             return {
                 "error": "응답 시간 초과",
                 "question": query,
@@ -458,8 +470,6 @@ class APIClient:
         """컨텍스트 매니저 종료"""
         self.close()
 
-    # api_client.py에 추가할 메서드들
-
     def get_model_info(self, model_name: str) -> Dict:
         """
         특정 모델의 상세 정보 조회
@@ -523,7 +533,7 @@ class APIClient:
         사용 가능한 LLM 모델 목록 조회
 
         Returns:
-            모델 이름 리스트
+            모델 이름 리스트 (실패 시 빈 리스트)
         """
         try:
             response = self._make_request("GET", "/v1/models")
@@ -548,33 +558,8 @@ class APIClient:
 
         except Exception as e:
             logger.error(f"Failed to retrieve models: {str(e)}")
-            # 기본 모델 목록 반환
-            return [
-                "llama3:8b-instruct",
-                "llama3:70b-instruct",
-                "mistral:7b-instruct",
-                "mixtral:8x7b-instruct",
-                "phi:2.7b",
-                "gemma:7b"
-            ]
-
-    def get_model_info(self, model_name: str) -> Dict:
-        """
-        특정 모델의 상세 정보 조회 (선택적)
-
-        Args:
-            model_name: 모델 이름
-
-        Returns:
-            모델 정보 딕셔너리
-        """
-        try:
-            response = self._make_request("GET", f"/v1/models/{model_name}")
-            return response.json()
-
-        except Exception as e:
-            logger.error(f"Failed to retrieve model info for {model_name}: {str(e)}")
-            return {"error": str(e)}
+            # ❌ 하드코딩된 기본 모델 목록 제거 - 실패 시 빈 리스트 반환
+            return []
 
     def get_models_status(self) -> Dict:
         """

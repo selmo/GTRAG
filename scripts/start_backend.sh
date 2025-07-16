@@ -58,11 +58,64 @@ else
     }
 fi
 
-START_TIME=$(date)
+START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 log_info "시작 시간: $START_TIME"
 
-# 1. 프로젝트 루트로 이동
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# 1. 프로젝트 루트 찾기 (개선된 로직)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+log_info "스크립트 위치: $SCRIPT_DIR"
+
+# 프로젝트 루트 찾기 함수
+find_project_root() {
+    local current_dir="$1"
+    local max_depth=5
+    local depth=0
+
+    while [[ $depth -lt $max_depth ]]; do
+        # 프로젝트 루트 판별 조건들
+        if [[ -f "$current_dir/backend/api/main.py" ]] || \
+           [[ -f "$current_dir/backend/requirements.txt" ]] || \
+           [[ -f "$current_dir/backend/requirements-backend.txt" ]] || \
+           [[ -d "$current_dir/backend" && -d "$current_dir/frontend" ]]; then
+            echo "$current_dir"
+            return 0
+        fi
+
+        # 한 단계 위로 이동
+        current_dir="$(dirname "$current_dir")"
+        depth=$((depth + 1))
+
+        # 루트 디렉토리에 도달한 경우 중단
+        if [[ "$current_dir" == "/" ]]; then
+            break
+        fi
+    done
+
+    return 1
+}
+
+# 프로젝트 루트 찾기 시도
+if PROJECT_ROOT=$(find_project_root "$SCRIPT_DIR"); then
+    log_success "프로젝트 루트 발견: $PROJECT_ROOT"
+elif PROJECT_ROOT=$(find_project_root "$(pwd)"); then
+    log_success "프로젝트 루트 발견: $PROJECT_ROOT"
+else
+    log_error "프로젝트 루트를 찾을 수 없습니다."
+    echo "다음 중 하나가 포함된 디렉토리에서 실행하세요:"
+    echo "  - backend/api/main.py"
+    echo "  - backend/requirements-backend.txt"
+    echo "  - backend/ 및 frontend/ 디렉토리"
+    echo ""
+    echo "현재 디렉토리에서 강제로 실행하시겠습니까? (y/n)"
+    read -r response
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        PROJECT_ROOT="$(pwd)"
+        log_warning "현재 디렉토리를 프로젝트 루트로 설정: $PROJECT_ROOT"
+    else
+        exit 1
+    fi
+fi
+
 cd "$PROJECT_ROOT" || {
     log_error "프로젝트 루트로 이동할 수 없습니다: $PROJECT_ROOT"
     exit 1
@@ -244,6 +297,7 @@ fi
 
 # 8. 의존성 설치
 log_info "Python 패키지 설치 확인..."
+log_info "현재 작업 디렉토리: $(pwd)"
 
 # requirements 파일 찾기
 REQ_FILES=(
@@ -253,19 +307,33 @@ REQ_FILES=(
 )
 
 REQ_FILE=""
+log_info "Requirements 파일 탐색 중..."
 for req_file in "${REQ_FILES[@]}"; do
     if [[ -f "$req_file" ]]; then
         REQ_FILE="$req_file"
+        log_success "Requirements 파일 발견: $req_file"
         break
     fi
 done
 
 if [[ -z "$REQ_FILE" ]]; then
     log_error "requirements 파일을 찾을 수 없습니다."
-    echo "다음 중 하나의 파일이 필요합니다:"
+    echo ""
+    echo "현재 디렉토리 구조:"
+    echo "  현재 위치: $(pwd)"
+    if [[ -d "backend" ]]; then
+        echo "  backend 디렉토리 내용:"
+        ls -la backend/ | grep -E "(requirements|\.txt)" || echo "    requirements 파일 없음"
+    else
+        echo "  ❌ backend 디렉토리가 없습니다"
+    fi
+    echo ""
+    echo "찾고 있는 파일들:"
     for req_file in "${REQ_FILES[@]}"; do
         echo "  - $req_file"
     done
+    echo ""
+    echo "올바른 프로젝트 루트에서 실행하고 있는지 확인하세요."
     exit 1
 fi
 
@@ -420,7 +488,7 @@ fi
 # 15. 완료 메시지
 log_success "GTOne RAG 백엔드 서비스 시작 완료!"
 
-END_TIME=$(date)
+END_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 echo "시작 시간: $START_TIME"
 echo "완료 시간: $END_TIME"
 
@@ -447,7 +515,7 @@ echo -e "\n${GREEN}✨ 백엔드 서비스 실행 중! ✨${NC}"
 # 백엔드 정보 저장
 cat > .backend_info << EOF
 # GTOne RAG Backend Service Info
-# Generated: $(date)
+# Generated: $(date '+%Y-%m-%d %H:%M:%S')
 API_PID=$API_PID
 CELERY_PID=$CELERY_PID
 API_PORT=$API_PORT

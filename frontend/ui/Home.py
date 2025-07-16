@@ -24,7 +24,7 @@ try:
     from ui.utils.api_client import APIClient
     from ui.utils.session import SessionManager
     from ui.components.sidebar import render_sidebar
-    from ui.components.chatting import render_chat_history, handle_chat_input
+    from ui.components.chatting import render_chat_history, handle_chat_input, check_model_availability
     from ui.components.uploader import get_upload_summary
     from ui.utils.streamlit_helpers import rerun
 except ImportError as e:
@@ -274,27 +274,36 @@ def render_main_app():
     if st.session_state.get('show_chat', False):
         st.header("💬 AI 어시스턴트")
 
-        # 채팅 컨테이너
-        chat_container = st.container()
+        # 모델 사용 가능 여부 확인
+        is_model_available, model_error = check_model_availability(api_client)
 
-        with chat_container:
-            # 채팅 히스토리
-            render_chat_history()
+        if not is_model_available:
+            st.error(f"🚫 {model_error}")
+            st.info("💡 설정 페이지에서 모델을 선택한 후 사용해주세요.")
 
-            # 채팅 입력
-            settings = SessionManager.get_default_ai_settings()
-            rag_settings = settings.get('rag', {})
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("⚙️ 설정 페이지로 이동"):
+                    st.switch_page("pages/settings.py")
+            with col2:
+                if st.button("채팅 숨기기"):
+                    st.session_state.show_chat = False
+                    rerun()
+        else:
+            # 채팅 컨테이너
+            chat_container = st.container()
 
-            handle_chat_input(
-                api_client,
-                top_k=rag_settings.get('top_k', 5),  # ✅ 기본값을 5로 증가
-                model=settings.get('llm', {}).get('model'),
-            )
+            with chat_container:
+                # 채팅 히스토리
+                render_chat_history()
 
-        # 채팅 숨기기 버튼
-        if st.button("채팅 숨기기"):
-            st.session_state.show_chat = False
-            rerun()
+                # 채팅 입력 - 개선된 버전은 api_client만 필요
+                handle_chat_input(api_client)
+
+            # 채팅 숨기기 버튼
+            if st.button("채팅 숨기기"):
+                st.session_state.show_chat = False
+                rerun()
 
     else:
         # 채팅이 숨겨진 경우 예시 질문 표시
@@ -312,9 +321,16 @@ def render_main_app():
         for idx, question in enumerate(example_questions):
             with cols[idx % 3]:
                 if st.button(question, key=f"example_{idx}", use_container_width=True):
-                    st.session_state.show_chat = True
-                    SessionManager.add_message("user", question.split(" ", 1)[1])
-                    rerun()
+                    # 모델 사용 가능 여부 확인 후 채팅 시작
+                    is_available, error_msg = check_model_availability(api_client)
+
+                    if is_available:
+                        st.session_state.show_chat = True
+                        SessionManager.add_message("user", question.split(" ", 1)[1])
+                        rerun()
+                    else:
+                        st.error(f"🚫 {error_msg}")
+                        st.info("💡 설정 페이지에서 모델을 선택한 후 사용해주세요.")
 
     # 최근 활동
     st.divider()
@@ -354,8 +370,11 @@ def render_main_app():
             for msg in recent_messages:
                 st.write(f"💬 {msg['content'][:100]}...")
                 if 'timestamp' in msg:
-                    from ui.utils.helpers import format_timestamp
-                    st.caption(format_timestamp(msg['timestamp']))
+                    try:
+                        from ui.utils.helpers import format_timestamp
+                        st.caption(format_timestamp(msg['timestamp']))
+                    except:
+                        st.caption("시간 정보 없음")
         else:
             st.info("아직 대화 기록이 없습니다.")
 
@@ -365,8 +384,9 @@ def render_main_app():
         st.markdown("""
         ### 🚀 시작하기
         1. **문서 업로드**: 왼쪽 사이드바 또는 문서 페이지에서 파일 업로드
-        2. **검색**: 검색 페이지에서 키워드로 문서 검색
-        3. **질문**: 이 페이지 또는 채팅으로 AI에게 질문
+        2. **모델 설정**: 설정 페이지에서 Ollama 모델 선택
+        3. **검색**: 검색 페이지에서 키워드로 문서 검색
+        4. **질문**: 이 페이지 또는 채팅으로 AI에게 질문
 
         ### 📌 지원 파일 형식
         - PDF 문서 (.pdf)
@@ -378,8 +398,10 @@ def render_main_app():
         - 구체적으로 질문할수록 정확한 답변을 받을 수 있습니다
         - 여러 문서를 업로드하면 더 풍부한 정보를 얻을 수 있습니다
         - 검색 시 다양한 키워드를 시도해보세요
+        - 설정 페이지에서 모델과 파라미터를 조정할 수 있습니다
 
         ### 🆘 문제 해결
+        - **모델 선택 필요**: 설정 페이지에서 Ollama 모델을 선택하세요
         - **파일 업로드 실패**: 파일 크기(50MB 이하) 및 형식 확인
         - **답변이 부정확함**: 관련 문서가 업로드되었는지 확인
         - **시스템 오류**: 페이지 새로고침 후 재시도

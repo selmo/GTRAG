@@ -11,7 +11,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # 종료 시작 시간 기록
-STOP_START_TIME=$(date)
+STOP_START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 echo "종료 시작 시간: $STOP_START_TIME"
 
 # 1. Docker 환경 확인
@@ -67,8 +67,8 @@ if [[ ${#running_containers[@]} -gt 0 ]]; then
     for container in "${running_containers[@]}"; do
         echo -n "   $container 정지 중... "
 
-        # 정상 정지 시도
-        if docker stop $container > /dev/null 2>&1; then
+        # 정상 정지 시도 (더 긴 대기 시간)
+        if docker stop -t 30 $container > /dev/null 2>&1; then
             echo -e "${GREEN}완료${NC}"
         else
             echo -e "${YELLOW}강제 정지 시도${NC}"
@@ -148,7 +148,7 @@ if [[ ${#all_containers[@]} -gt 0 ]]; then
     esac
 fi
 
-# 5. 포트 상태 확인
+# 5. 안전한 포트 상태 확인 (강제 정리 제거)
 echo -e "\n${BLUE}📊 포트 상태 확인...${NC}"
 
 # 기본 포트들
@@ -158,6 +158,25 @@ REDIS_PORT=${REDIS_PORT:-6379}
 ports=($QDRANT_PORT $REDIS_PORT)
 port_names=("Qdrant" "Redis")
 
+# 안전한 Docker 컨테이너별 포트 확인
+function check_container_ports() {
+    local container_name=$1
+    local expected_port=$2
+
+    # 컨테이너가 실행 중인지 확인
+    if docker ps --format "table {{.Names}}" | grep -q "^$container_name$"; then
+        # 컨테이너의 포트 매핑 확인
+        container_ports=$(docker port $container_name 2>/dev/null)
+        if [[ -n "$container_ports" ]]; then
+            echo -e "   ⚠️  $container_name이 여전히 포트를 사용 중입니다:"
+            echo "      $container_ports"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# GTOne RAG 컨테이너별 포트 확인만 수행
 all_ports_clear=true
 
 for i in "${!ports[@]}"; do
@@ -165,36 +184,33 @@ for i in "${!ports[@]}"; do
     name=${port_names[$i]}
 
     echo -n "   포트 $port ($name): "
-    if lsof -i:$port > /dev/null 2>&1; then
-        echo -e "${RED}여전히 사용 중${NC}"
-        all_ports_clear=false
 
-        # 사용 중인 프로세스 정보
-        process_info=$(lsof -i:$port | tail -n +2 | head -1)
+    # lsof로 포트 사용 확인 (하지만 강제 종료는 하지 않음)
+    if command -v lsof &> /dev/null && lsof -i:$port > /dev/null 2>&1; then
+        # 포트를 사용하는 프로세스 정보 확인
+        process_info=$(lsof -i:$port -t 2>/dev/null | head -1)
         if [[ -n "$process_info" ]]; then
-            echo "      사용 중인 프로세스: $process_info"
+            process_name=$(ps -p $process_info -o comm= 2>/dev/null)
+
+            # Docker 관련 프로세스인지 확인
+            if [[ "$process_name" == *"docker"* ]] || [[ "$process_name" == *"containerd"* ]]; then
+                echo -e "${YELLOW}Docker 관련 프로세스 사용 중${NC}"
+                echo -e "      ${GREEN}✅ 안전 - Docker 시스템 프로세스${NC}"
+            else
+                echo -e "${RED}외부 프로세스 사용 중${NC}"
+                echo "      프로세스: $process_name (PID: $process_info)"
+                echo -e "      ${YELLOW}⚠️  수동으로 확인이 필요합니다${NC}"
+                all_ports_clear=false
+            fi
+        else
+            echo -e "${YELLOW}사용 중 (정보 확인 불가)${NC}"
         fi
     else
         echo -e "${GREEN}정리됨${NC}"
     fi
 done
 
-# 추가 포트 정리 옵션
-if [[ $all_ports_clear == false ]]; then
-    echo -e "\n${YELLOW}⚠️  일부 포트가 여전히 사용 중입니다.${NC}"
-    echo "강제로 정리하시겠습니까? (y/n)"
-    read -r response
-    if [[ "$response" =~ ^[Yy]$ ]]; then
-        echo -e "\n${BLUE}🔧 포트 강제 정리 중...${NC}"
-        for port in "${ports[@]}"; do
-            if lsof -i:$port > /dev/null 2>&1; then
-                echo "   포트 $port 강제 정리 중..."
-                lsof -ti:$port | xargs kill -9 2>/dev/null
-                sleep 1
-            fi
-        done
-    fi
-fi
+# 포트 강제 정리 옵션 제거됨 - Docker 데몬 보호
 
 # 6. Docker 네트워크 정리
 echo -e "\n${BLUE}🌐 Docker 네트워크 정리...${NC}"
@@ -243,17 +259,19 @@ if [[ -f ".infra_info" ]]; then
     rm ".infra_info"
 fi
 
-# Docker 임시 파일 정리 (선택적)
+# Docker 시스템 정리 (더 안전하게)
 echo -n "   Docker 시스템 정리... "
-if docker system df | grep -q "reclaimable"; then
+if docker system df 2>/dev/null | grep -q "reclaimable"; then
     echo -e "${YELLOW}정리 가능한 데이터 있음${NC}"
     echo "   Docker 시스템 정리를 실행하시겠습니까? (y/n)"
-    echo "   (사용하지 않는 이미지, 컨테이너, 네트워크, 볼륨 정리)"
+    echo "   ${YELLOW}⚠️  주의: 사용하지 않는 이미지와 컨테이너만 정리됩니다${NC}"
     read -r response
     if [[ "$response" =~ ^[Yy]$ ]]; then
-        echo "   Docker 시스템 정리 실행 중..."
-        docker system prune -f > /dev/null 2>&1
-        echo -e "   ${GREEN}✅ Docker 시스템 정리 완료${NC}"
+        echo "   Docker 시스템 정리 실행 중 (안전 모드)..."
+        # 더 안전한 정리: 볼륨은 제외하고 dangling 이미지만
+        docker image prune -f > /dev/null 2>&1
+        docker container prune -f > /dev/null 2>&1
+        echo -e "   ${GREEN}✅ Docker 시스템 정리 완료 (안전 모드)${NC}"
     fi
 else
     echo -e "${GREEN}정리할 데이터 없음${NC}"
@@ -261,6 +279,15 @@ fi
 
 # 9. 최종 상태 확인
 echo -e "\n${BLUE}📊 최종 인프라 상태...${NC}"
+
+# Docker 데몬 상태 재확인
+echo -n "   Docker 데몬 상태: "
+if docker info > /dev/null 2>&1; then
+    echo -e "${GREEN}✅ 정상 실행 중${NC}"
+else
+    echo -e "${RED}❌ 문제 발생!${NC}"
+    echo -e "${YELLOW}   Docker 데몬을 다시 시작해야 할 수 있습니다.${NC}"
+fi
 
 # 남은 GTOne RAG 관련 컨테이너 확인
 echo "   GTOne RAG 관련 컨테이너:"
@@ -296,15 +323,27 @@ fi
 # 10. 완료 메시지
 echo -e "\n${GREEN}✅ GTOne RAG 인프라 서비스 종료 완료!${NC}"
 
-if $all_ports_clear; then
-    echo -e "\n${GREEN}🎉 모든 포트가 정리되었습니다.${NC}"
+# Docker 데몬 상태에 따른 메시지
+if docker info > /dev/null 2>&1; then
+    echo -e "\n${GREEN}🎉 Docker 데몬이 정상적으로 실행 중입니다!${NC}"
 else
-    echo -e "\n${YELLOW}⚠️  일부 포트가 여전히 사용 중일 수 있습니다.${NC}"
+    echo -e "\n${RED}⚠️  Docker 데몬에 문제가 발생했습니다!${NC}"
+    echo -e "   ${YELLOW}다음 명령으로 Docker를 다시 시작하세요:${NC}"
+    echo -e "   sudo systemctl restart docker"
+    echo -e "   또는"
+    echo -e "   sudo service docker restart"
+fi
+
+if $all_ports_clear; then
+    echo -e "\n${GREEN}🎉 모든 포트가 안전하게 정리되었습니다.${NC}"
+else
+    echo -e "\n${YELLOW}⚠️  일부 포트가 외부 프로세스에 의해 사용 중입니다.${NC}"
+    echo -e "   수동으로 확인 후 필요시 정리하세요."
 fi
 
 echo -e "\n${BLUE}📊 종료 요약:${NC}"
 echo "   종료 시작: $STOP_START_TIME"
-echo "   종료 완료: $(date)"
+echo "   종료 완료: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "   남은 컨테이너: $remaining_containers개"
 echo "   남은 볼륨: $remaining_volumes개"
 
@@ -328,4 +367,4 @@ echo "   1. 인프라 시작: ./scripts/start_infra.sh"
 echo "   2. 백엔드 시작: cd ../backend && ./scripts/start_backend.sh"
 echo "   3. 프론트엔드 시작: cd ../frontend && ./scripts/start_frontend.sh"
 
-echo -e "\n${GREEN}✨ 인프라 서비스 정리 완료! ✨${NC}"
+echo -e "\n${GREEN}✨ 인프라 서비스 정리 완료! Docker 데몬 보호됨! ✨${NC}"
