@@ -1,11 +1,12 @@
 """
 채팅 인터페이스 컴포넌트 - 개선된 버전
-설정 페이지의 모델 설정이 완전히 반영되도록 수정
+통합된 시스템 상태 관리자를 사용하여 모델 설정과 상태 확인 개선
 """
 import streamlit as st
 from typing import Dict, List, Optional
 from datetime import datetime
 from frontend.ui.utils.streamlit_helpers import rerun
+from frontend.ui.utils.system_health import SystemHealthManager
 
 
 def get_model_settings():
@@ -28,24 +29,8 @@ def get_model_settings():
 
 
 def check_model_availability(api_client):
-    """모델 사용 가능 여부 확인"""
-    try:
-        available_models = api_client.get_available_models()
-        selected_model = st.session_state.get('selected_model')
-
-        if not available_models:
-            return False, "사용 가능한 모델이 없습니다. Ollama 서버를 확인하세요."
-
-        if not selected_model:
-            return False, "모델이 선택되지 않았습니다. 설정 페이지에서 모델을 선택하세요."
-
-        if selected_model not in available_models:
-            return False, f"선택된 모델 '{selected_model}'이 더 이상 사용할 수 없습니다. 설정을 확인하세요."
-
-        return True, None
-
-    except Exception as e:
-        return False, f"모델 상태 확인 실패: {str(e)}"
+    """모델 사용 가능 여부 확인 - 통합 시스템 상태 관리자 사용"""
+    return SystemHealthManager.check_model_availability(api_client)
 
 
 def render_chat_history():
@@ -66,6 +51,12 @@ def render_chat_history():
                         search_info = message["search_info"]
                         st.caption(f"검색된 문서: {search_info.get('total_results', 0)}개")
                         st.caption(f"검색 유형: {search_info.get('search_type', 'unknown')}")
+
+                    # 설정 정보도 표시
+                    if "settings_used" in message:
+                        settings = message["settings_used"]
+                        st.caption(f"Temperature: {settings.get('temperature', 'N/A')}")
+                        st.caption(f"검색 문서 수: {settings.get('top_k', 'N/A')}")
 
 
 def render_sources(sources: List[Dict]):
@@ -105,7 +96,7 @@ def render_sources(sources: List[Dict]):
 
 
 def display_current_settings_sidebar(api_client):
-    """사이드바에 현재 설정 표시"""
+    """사이드바에 현재 설정 표시 - 시스템 상태 통합"""
     with st.sidebar:
         st.header("🔧 현재 설정")
 
@@ -120,16 +111,18 @@ def display_current_settings_sidebar(api_client):
             st.write(f"**타임아웃**: {settings['rag_timeout']}초")
         else:
             st.error("❌ 모델이 선택되지 않음")
-            st.markdown("🔗 [설정 페이지에서 모델을 선택하세요](../pages/settings.py)")
+            if st.button("⚙️ 설정 페이지로", key="go_to_settings"):
+                st.switch_page("pages/99_Settings.py")
 
         st.divider()
 
         # 빠른 설정 변경
         st.subheader("빠른 설정")
 
-        if st.button("🔄 모델 상태 확인"):
+        # 시스템 상태 확인 (통합 관리자 사용)
+        if st.button("🔄 모델 상태 확인", key="check_model_status"):
             with st.spinner("모델 상태 확인 중..."):
-                is_available, error_msg = check_model_availability(api_client)
+                is_available, error_msg = SystemHealthManager.check_model_availability(api_client)
 
                 if is_available:
                     st.success("✅ 모델 사용 가능")
@@ -162,12 +155,53 @@ def display_current_settings_sidebar(api_client):
         if quick_min_score != settings['min_similarity']:
             st.session_state.min_similarity = quick_min_score
 
+        # 전체 시스템 상태 표시 (간단)
+        st.divider()
+        display_system_status_compact(api_client)
+
+
+def display_system_status_compact(api_client):
+    """시스템 상태 간단 표시"""
+    st.subheader("📊 시스템 상태")
+
+    # 캐시된 상태 활용
+    cached_status = SystemHealthManager.get_cached_status()
+
+    if cached_status:
+        # 전체 상태
+        emoji, message, _ = SystemHealthManager.get_status_display_info(cached_status.overall_status)
+
+        if cached_status.overall_status.value in ['healthy', 'degraded']:
+            st.success(f"{emoji} 사용 가능")
+        else:
+            st.error(f"{emoji} 문제 있음")
+
+        # 핵심 서비스 상태
+        core_services = ['qdrant', 'ollama', 'embedder']
+        service_status = []
+
+        for service in core_services:
+            if service in cached_status.services:
+                service_info = cached_status.services[service]
+                emoji, _ = SystemHealthManager.get_service_display_info(service_info.status)
+                service_status.append(emoji)
+
+        if service_status:
+            st.caption(" ".join(service_status))
+
+        st.caption(f"최종 확인: {cached_status.last_updated.strftime('%H:%M:%S')}")
+    else:
+        st.info("상태 미확인")
+        if st.button("확인", key="check_status_compact"):
+            SystemHealthManager.check_full_system_status(api_client, force_refresh=True)
+            rerun()
+
 
 def handle_chat_input(api_client):
-    """채팅 입력 처리 - 설정 페이지 설정 완전 반영"""
+    """채팅 입력 처리 - 통합 시스템 상태 관리 사용"""
 
-    # 모델 사용 가능 여부 사전 확인
-    is_model_available, model_error = check_model_availability(api_client)
+    # 모델 사용 가능 여부 사전 확인 (통합 관리자 사용)
+    is_model_available, model_error = SystemHealthManager.check_model_availability(api_client)
 
     if not is_model_available:
         st.error(f"🚫 {model_error}")
@@ -179,7 +213,7 @@ def handle_chat_input(api_client):
         settings = get_model_settings()
 
         # 실시간으로 모델 상태 재확인
-        is_available, error_msg = check_model_availability(api_client)
+        is_available, error_msg = SystemHealthManager.check_model_availability(api_client)
         if not is_available:
             st.error(f"🚫 {error_msg}")
             return False
@@ -293,6 +327,17 @@ def handle_error(error_msg: str, model_used: str = None):
 
     st.error(error_text)
 
+    # 에러 해결 제안
+    with st.expander("💡 해결 방안"):
+        st.markdown("""
+        **일반적인 해결 방법:**
+        1. **모델 상태 확인**: 설정 페이지에서 모델이 정상인지 확인
+        2. **네트워크 연결**: API 서버 연결 상태 확인
+        3. **타임아웃 조정**: 설정에서 타임아웃 시간을 늘려보세요
+        4. **질문 단순화**: 더 간단하고 구체적인 질문으로 시도
+        5. **시스템 재시작**: 문제가 지속되면 시스템 재시작
+        """)
+
     # 에러 메시지도 히스토리에 추가
     st.session_state.messages.append({
         "role": "assistant",
@@ -396,6 +441,9 @@ def render_chat_interface(api_client):
     # 메인 채팅 영역
     st.title("💬 GTOne RAG Chat")
 
+    # 상단 상태 표시
+    render_chat_status_header(api_client)
+
     # 상단 컨트롤
     col1, col2, col3 = st.columns([2, 1, 1])
 
@@ -427,3 +475,157 @@ def render_chat_interface(api_client):
         display_chat_stats()
 
     return chat_active
+
+
+def render_chat_status_header(api_client):
+    """채팅 상단 상태 표시"""
+
+    # 모델 상태 확인
+    is_available, error_msg = SystemHealthManager.check_model_availability(api_client)
+
+    col1, col2, col3 = st.columns([2, 1, 1])
+
+    with col1:
+        if is_available:
+            model_name = st.session_state.get('selected_model', 'Unknown')
+            st.success(f"🤖 {model_name} 사용 준비 완료")
+        else:
+            st.error(f"🚫 모델 사용 불가")
+            st.caption(error_msg)
+
+    with col2:
+        # 시스템 상태 간단 표시
+        cached_status = SystemHealthManager.get_cached_status()
+        if cached_status:
+            emoji, _, _ = SystemHealthManager.get_status_display_info(cached_status.overall_status)
+            status_text = {
+                'healthy': '정상',
+                'degraded': '일부 문제',
+                'unhealthy': '문제',
+                'initializing': '초기화',
+                'error': '오류'
+            }.get(cached_status.overall_status.value, '알 수 없음')
+
+            if cached_status.overall_status.value in ['healthy', 'degraded']:
+                st.info(f"{emoji} 시스템 {status_text}")
+            else:
+                st.warning(f"{emoji} 시스템 {status_text}")
+        else:
+            st.info("🔄 상태 확인 필요")
+
+    with col3:
+        # 빠른 설정 버튼
+        if st.button("⚙️ 설정", key="quick_settings"):
+            st.switch_page("pages/99_Settings.py")
+
+
+def render_enhanced_chat_input(api_client):
+    """향상된 채팅 입력 (추가 기능)"""
+
+    # 입력 전 상태 확인
+    settings = get_model_settings()
+    is_available, error_msg = SystemHealthManager.check_model_availability(api_client)
+
+    # 입력 상태에 따른 플레이스홀더 및 비활성화
+    if not is_available:
+        placeholder = f"모델이 준비되지 않았습니다: {error_msg}"
+        disabled = True
+    elif not settings['model']:
+        placeholder = "모델을 선택해주세요 (설정 페이지)"
+        disabled = True
+    else:
+        placeholder = f"{settings['model']}에게 질문하세요..."
+        disabled = False
+
+    # 채팅 입력
+    user_input = st.chat_input(
+        placeholder=placeholder,
+        disabled=disabled,
+        key="enhanced_chat_input"
+    )
+
+    if user_input and not disabled:
+        # 입력 처리는 기존 함수 활용
+        process_user_input(user_input, api_client)
+
+
+def process_user_input(user_input: str, api_client):
+    """사용자 입력 처리 (분리된 함수)"""
+
+    settings = get_model_settings()
+
+    # 입력 검증
+    if len(user_input.strip()) < 2:
+        st.warning("⚠️ 더 구체적인 질문을 입력해주세요.")
+        return
+
+    # 사용자 메시지 추가
+    st.session_state.messages.append({
+        "role": "user",
+        "content": user_input,
+        "timestamp": datetime.now().isoformat()
+    })
+
+    # 페이지 새로고침으로 메시지 표시
+    rerun()
+
+
+def get_chat_context_info():
+    """채팅 컨텍스트 정보 반환"""
+    if not st.session_state.get('messages'):
+        return {
+            'total_messages': 0,
+            'conversation_length': 0,
+            'last_model_used': None
+        }
+
+    messages = st.session_state.messages
+    user_messages = [m for m in messages if m['role'] == 'user']
+    assistant_messages = [m for m in messages if m['role'] == 'assistant']
+
+    # 마지막 사용 모델
+    last_model = None
+    for msg in reversed(assistant_messages):
+        if 'model_used' in msg:
+            last_model = msg['model_used']
+            break
+
+    # 대화 길이 계산 (문자 수)
+    total_chars = sum(len(msg['content']) for msg in messages)
+
+    return {
+        'total_messages': len(messages),
+        'user_messages': len(user_messages),
+        'assistant_messages': len(assistant_messages),
+        'conversation_length': total_chars,
+        'last_model_used': last_model
+    }
+
+
+def render_conversation_summary():
+    """대화 요약 표시"""
+    context = get_chat_context_info()
+
+    if context['total_messages'] == 0:
+        return
+
+    with st.expander(f"📊 대화 요약 ({context['total_messages']}개 메시지)"):
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("질문 수", context['user_messages'])
+
+        with col2:
+            st.metric("답변 수", context['assistant_messages'])
+
+        with col3:
+            st.metric("총 문자", f"{context['conversation_length']:,}")
+
+        if context['last_model_used']:
+            st.caption(f"마지막 사용 모델: {context['last_model_used']}")
+
+
+# 호환성을 위한 기존 함수명 유지
+def check_model_availability_legacy(api_client):
+    """기존 호환성을 위한 함수 (deprecated)"""
+    return SystemHealthManager.check_model_availability(api_client)

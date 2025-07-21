@@ -1,12 +1,14 @@
 """
 GTOne RAG System - 개선된 홈 페이지
-시스템 상태에 따라 로딩 화면 또는 메인 화면 표시
+통합된 시스템 상태 관리자를 사용하여 로딩 화면 또는 메인 화면 표시
 """
 import streamlit as st
 import sys
 from pathlib import Path
 import time
-import requests
+from frontend.ui.components.common import format_duration, StatusIndicator
+from frontend.ui.utils.file_utils import FileNameCleaner
+
 
 # 프로젝트 루트를 Python 경로에 추가 (GTRAG 루트에서 실행 고려)
 current_file = Path(__file__).resolve()
@@ -21,12 +23,22 @@ for path in [str(frontend_dir), str(project_root)]:
 
 # 이제 import 가능
 try:
-    from ui.utils.api_client import APIClient
-    from ui.utils.session import SessionManager
-    from ui.components.sidebar import render_sidebar
-    from ui.components.chatting import render_chat_history, handle_chat_input, check_model_availability
-    from ui.components.uploader import get_upload_summary
-    from ui.utils.streamlit_helpers import rerun
+    from frontend.ui.utils.client_manager import ClientManager
+    from frontend.ui.utils.session import SessionManager
+    # 조건부 import로 오류 방지
+    try:
+        from frontend.ui.utils.system_health import SystemHealthManager, SystemStatus, ServiceStatus
+    except ImportError:
+        # system_health 모듈을 찾을 수 없는 경우 기본 함수 사용
+        SystemHealthManager = None
+        SystemStatus = None
+        ServiceStatus = None
+        # 기존 함수 import
+        from frontend.ui.utils.helpers import check_system_ready
+
+    from frontend.ui.components.sidebar import render_sidebar
+    from frontend.ui.components.uploader import get_upload_summary
+    from frontend.ui.utils.streamlit_helpers import rerun
 except ImportError as e:
     st.error(f"모듈 import 오류: {e}")
     st.error("현재 Python 경로:")
@@ -42,58 +54,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-def check_system_ready() -> tuple[bool, dict]:
-    """
-    시스템 준비 상태 확인
-    Returns: (is_ready, status_info)
-    """
-    try:
-        # API 서버 기본 연결 확인
-        response = requests.get("http://localhost:18000/docs", timeout=3)
-        if response.status_code != 200:
-            return False, {"error": "API server not responding"}
 
-        # 헬스체크 확인
-        health_response = requests.get("http://localhost:18000/v1/health", timeout=5)
-        if health_response.status_code == 200:
-            health_data = health_response.json()
-            services = health_data.get("services", {})
-
-            # 핵심 서비스 상태 확인
-            qdrant_ok = services.get("qdrant", {}).get("status") == "connected"
-            ollama_ok = services.get("ollama", {}).get("status") == "connected"
-
-            # 임베딩 모델 테스트
-            try:
-                test_response = requests.get(
-                    "http://localhost:18000/v1/search?q=test&top_k=1",
-                    timeout=10
-                )
-                embedder_ok = test_response.status_code in [200, 404]  # 404도 OK (빈 컬렉션)
-            except:
-                embedder_ok = False
-
-            all_ready = qdrant_ok and embedder_ok
-
-            return all_ready, {
-                "qdrant": qdrant_ok,
-                "ollama": ollama_ok,
-                "embedder": embedder_ok,
-                "overall": all_ready
-            }
-        else:
-            return False, {"error": "Health check failed"}
-
-    except requests.exceptions.ConnectionError:
-        return False, {"error": "Cannot connect to API server"}
-    except requests.exceptions.Timeout:
-        return False, {"error": "API server timeout"}
-    except Exception as e:
-        return False, {"error": f"System check failed: {str(e)}"}
-
-
-def render_loading_screen(status_info: dict):
-    """시스템 로딩 화면 렌더링"""
+def render_loading_screen(health_report):
+    """시스템 로딩 화면 렌더링 - 개선된 버전"""
 
     # 로딩 스타일
     st.markdown("""
@@ -140,51 +103,86 @@ def render_loading_screen(status_info: dict):
     with col2:
         st.subheader("📊 초기화 상태")
 
-        if "error" in status_info:
-            st.error(f"❌ {status_info['error']}")
-            st.info("🔄 페이지를 새로고침하거나 잠시 후 다시 시도해보세요.")
-        else:
-            # 서비스별 상태
-            services = [
-                ("Qdrant 벡터 DB", status_info.get("qdrant", False)),
-                ("임베딩 모델", status_info.get("embedder", False)),
-                ("Ollama LLM", status_info.get("ollama", False))
+        if SystemHealthManager is not None:
+            # 전체 상태 표시
+            emoji, message, _ = SystemHealthManager.get_status_display_info(health_report.overall_status)
+            st.info(f"{emoji} {message}")
+
+            # 개별 서비스 상태
+            services_to_show = [
+                ("Qdrant 벡터 DB", "qdrant"),
+                ("임베딩 모델", "embedder"),
+                ("Ollama LLM", "ollama"),
+                ("Celery 작업 큐", "celery")
             ]
 
-            for service_name, is_ready in services:
-                if is_ready:
-                    st.success(f"✅ {service_name}: 준비 완료")
-                else:
-                    st.warning(f"⏳ {service_name}: 초기화 중...")
+            ready_count = 0
+            total_count = len(services_to_show)
 
-        # 진행률 표시
-        if "error" not in status_info:
-            ready_count = sum([
-                status_info.get("qdrant", False),
-                status_info.get("embedder", False),
-                status_info.get("ollama", False)
-            ])
-            progress = ready_count / 3
+            for service_display_name, service_key in services_to_show:
+                service_info = health_report.services.get(service_key)
+                if service_info:
+                    emoji, status_text = SystemHealthManager.get_service_display_info(service_info.status)
+
+                    if service_info.status == ServiceStatus.CONNECTED:
+                        st.success(f"{emoji} {service_display_name}: {status_text}")
+                        ready_count += 1
+                    elif service_info.status == ServiceStatus.DEGRADED:
+                        st.warning(f"{emoji} {service_display_name}: {status_text}")
+                        if service_info.message:
+                            st.caption(f"   └ {service_info.message}")
+                    elif service_info.status == ServiceStatus.DISCONNECTED:
+                        st.error(f"{emoji} {service_display_name}: {status_text}")
+                        if service_info.message:
+                            st.caption(f"   └ {service_info.message}")
+                    else:
+                        st.info(f"{emoji} {service_display_name}: {status_text}")
+                        if service_info.message:
+                            st.caption(f"   └ {service_info.message}")
+
+            # 진행률 표시
+            progress = ready_count / total_count
             st.progress(progress)
-            st.caption(f"진행률: {int(progress * 100)}%")
+            st.caption(f"진행률: {int(progress * 100)}% ({ready_count}/{total_count})")
 
-    # 자동 새로고침
-    time.sleep(3)
+            # 오류 메시지 표시
+            if health_report.errors:
+                st.divider()
+                st.subheader("⚠️ 확인된 문제")
+                for error in health_report.errors:
+                    st.error(f"• {error}")
+
+            # 추가 정보 및 해결 방안
+            if health_report.overall_status == SystemStatus.ERROR:
+                st.divider()
+                st.subheader("🔧 해결 방안")
+                st.markdown("""
+                **일반적인 해결 방법:**
+                1. **API 서버 확인**: `docker-compose up -d` 또는 서버 재시작
+                2. **Ollama 상태 확인**: `ollama list` 명령으로 모델 확인
+                3. **네트워크 연결**: 방화벽 및 포트 설정 확인
+                4. **로그 확인**: 각 서비스의 로그에서 오류 메시지 확인
+                """)
+        else:
+            # Fallback: 기본 로딩 표시
+            st.info("🔄 시스템 상태를 확인하고 있습니다...")
+            if hasattr(health_report, 'get'):
+                if health_report.get('error'):
+                    st.error(f"❌ {health_report['error']}")
+
+    # 자동 새로고침 (5초 후)
+    time.sleep(5)
     rerun()
 
 
 def render_main_app():
-    """메인 애플리케이션 렌더링"""
+    """메인 애플리케이션 렌더링 - 기존 코드 유지"""
 
     # 세션 상태 초기화
     SessionManager.init_session_state()
 
     # API 클라이언트 초기화
-    @st.cache_resource
-    def get_api_client():
-        return APIClient()
-
-    api_client = get_api_client()
+    api_client = ClientManager.get_client()
 
     # 사이드바 렌더링
     render_sidebar(api_client)
@@ -202,7 +200,7 @@ def render_main_app():
     st.divider()
 
     # 대시보드
-    st.header("📊 대시보드")
+    st.header("📊 Dashboard")
 
     # 통계 카드
     col1, col2, col3, col4 = st.columns(4)
@@ -246,27 +244,27 @@ def render_main_app():
     st.divider()
 
     # 빠른 시작
-    st.header("🚀 빠른 시작")
+    st.header("🚀 Quick Start")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.subheader("1️⃣ 문서 업로드")
-        st.write("사이드바에서 PDF, 이미지, 텍스트 문서를 업로드하세요.")
+        st.write("PDF, 이미지, 텍스트 문서를 업로드")
         if st.button("📤 문서 업로드 페이지로", use_container_width=True):
-            st.switch_page("pages/documents.py")
+            st.switch_page("pages/10_Documents.py")
 
     with col2:
         st.subheader("2️⃣ 검색하기")
-        st.write("키워드로 업로드된 문서를 검색하세요.")
+        st.write("키워드로 업로드된 문서 검색")
         if st.button("🔍 검색 페이지로", use_container_width=True):
-            st.switch_page("pages/search.py")
+            st.switch_page("pages/20_Search.py")
 
     with col3:
         st.subheader("3️⃣ 질문하기")
-        st.write("AI와 대화하며 문서 내용을 탐색하세요.")
+        st.write("AI와 대화하며 문서 내용을 탐색")
         if st.button("💬 채팅 시작하기", use_container_width=True):
-            st.session_state.show_chat = True
+            st.switch_page("pages/30_AI_Chat.py")
 
     st.divider()
 
@@ -274,8 +272,19 @@ def render_main_app():
     if st.session_state.get('show_chat', False):
         st.header("💬 AI 어시스턴트")
 
-        # 모델 사용 가능 여부 확인
-        is_model_available, model_error = check_model_availability(api_client)
+        # 모델 사용 가능 여부 확인 (새로운 시스템 상태 관리자 사용)
+        if SystemHealthManager is not None:
+            is_model_available, model_error = SystemHealthManager.check_model_availability(api_client)
+        else:
+            # Fallback: 기본 확인
+            try:
+                available_models = api_client.get_available_models()
+                selected_model = st.session_state.get('selected_model')
+                is_model_available = bool(available_models and selected_model and selected_model in available_models)
+                model_error = "모델이 선택되지 않았거나 사용할 수 없습니다." if not is_model_available else None
+            except Exception as e:
+                is_model_available = False
+                model_error = f"모델 상태 확인 실패: {str(e)}"
 
         if not is_model_available:
             st.error(f"🚫 {model_error}")
@@ -284,7 +293,7 @@ def render_main_app():
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("⚙️ 설정 페이지로 이동"):
-                    st.switch_page("pages/settings.py")
+                    st.switch_page("pages/99_Settings.py")
             with col2:
                 if st.button("채팅 숨기기"):
                     st.session_state.show_chat = False
@@ -294,11 +303,8 @@ def render_main_app():
             chat_container = st.container()
 
             with chat_container:
-                # 채팅 히스토리
-                render_chat_history()
-
-                # 채팅 입력 - 개선된 버전은 api_client만 필요
-                handle_chat_input(api_client)
+                from frontend.ui.components.chat import ChatInterface
+                ChatInterface(api_client).render()
 
             # 채팅 숨기기 버튼
             if st.button("채팅 숨기기"):
@@ -322,7 +328,18 @@ def render_main_app():
             with cols[idx % 3]:
                 if st.button(question, key=f"example_{idx}", use_container_width=True):
                     # 모델 사용 가능 여부 확인 후 채팅 시작
-                    is_available, error_msg = check_model_availability(api_client)
+                    if SystemHealthManager is not None:
+                        is_available, error_msg = SystemHealthManager.check_model_availability(api_client)
+                    else:
+                        # Fallback 확인
+                        try:
+                            available_models = api_client.get_available_models()
+                            selected_model = st.session_state.get('selected_model')
+                            is_available = bool(available_models and selected_model and selected_model in available_models)
+                            error_msg = "모델이 설정되지 않았습니다." if not is_available else None
+                        except:
+                            is_available = False
+                            error_msg = "모델 상태 확인 실패"
 
                     if is_available:
                         st.session_state.show_chat = True
@@ -344,7 +361,7 @@ def render_main_app():
             for file in recent_files:
                 col1, col2, col3 = st.columns([3, 1, 1])
                 with col1:
-                    st.write(f"📄 {file['name']}")
+                    st.write(f"📄 {FileNameCleaner.clean_display_name(file['name'])}")
                 with col2:
                     st.caption(file['time'])
                 with col3:
@@ -371,8 +388,7 @@ def render_main_app():
                 st.write(f"💬 {msg['content'][:100]}...")
                 if 'timestamp' in msg:
                     try:
-                        from ui.utils.helpers import format_timestamp
-                        st.caption(format_timestamp(msg['timestamp']))
+                        st.caption(format_duration(msg['timestamp']))
                     except:
                         st.caption("시간 정보 없음")
         else:
@@ -423,18 +439,99 @@ def render_main_app():
         st.caption("Powered by Qdrant + Ollama")
 
 
+def display_system_status_summary(api_client):
+    """상단에 시스템 상태 요약 표시"""
+
+    if SystemHealthManager is None:
+        # Fallback: 간단한 상태 표시
+        st.info("🔄 시스템 상태 확인 중...")
+        return
+
+    # 캐시된 상태 확인 (빈번한 새로고침 방지)
+    cached_status = SystemHealthManager.get_cached_status()
+    if cached_status:
+        health_report = cached_status
+    else:
+        # 빠른 상태 확인 (타임아웃 단축)
+        try:
+            health_report = SystemHealthManager.check_full_system_status(api_client)
+        except Exception as e:
+            st.warning(f"⚠️ 시스템 상태 확인 실패: {e}")
+            return
+
+    # 상태에 따른 알림 표시
+    emoji, message, style = SystemHealthManager.get_status_display_info(health_report.overall_status)
+
+    if health_report.overall_status == SystemStatus.HEALTHY:
+        st.success(f"{emoji} {message}")
+    elif health_report.overall_status == SystemStatus.DEGRADED:
+        st.warning(f"{emoji} {message}")
+
+        # 문제가 있는 서비스 표시
+        problem_services = []
+        for service_name, service_info in health_report.services.items():
+            if service_info.status in [ServiceStatus.DISCONNECTED, ServiceStatus.DEGRADED, ServiceStatus.ERROR]:
+                problem_services.append(service_name)
+
+        if problem_services:
+            st.caption(f"⚠️ 문제 서비스: {', '.join(problem_services)}")
+
+    elif health_report.overall_status in [SystemStatus.UNHEALTHY, SystemStatus.ERROR]:
+        st.error(f"{emoji} {message}")
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            if health_report.errors:
+                st.caption(f"주요 문제: {health_report.errors[0]}")
+        with col2:
+            if st.button("🔧 문제 해결", key="fix_issues"):
+                st.switch_page("pages/99_Settings.py")
+
+    # 상태 새로고침 버튼 (작은 버튼)
+    col1, col2, col3 = st.columns([8, 1, 1])
+    with col2:
+        if st.button("🔄", help="상태 새로고침", key="refresh_status"):
+            SystemHealthManager.clear_cache()
+            rerun()
+
+    with col3:
+        # 마지막 확인 시간 표시
+        last_check = health_report.last_updated.strftime("%H:%M:%S")
+        st.caption(f"📅 {last_check}")
+
+
 def main():
     """메인 함수 - 시스템 상태에 따라 화면 결정"""
 
-    # 시스템 상태 확인
-    is_ready, status_info = check_system_ready()
+    # API 클라이언트 초기화
+    api_client = ClientManager.get_client()
 
-    if is_ready:
-        # 시스템 준비 완료 - 메인 앱 렌더링
-        render_main_app()
+    # 시스템 상태 확인 (통합 관리자 또는 기본 함수 사용)
+    if SystemHealthManager is not None:
+        is_ready, health_report = SystemHealthManager.is_system_ready(api_client)
+
+        if is_ready:
+            # 시스템 준비 완료 - 메인 앱 렌더링
+            render_main_app()
+        else:
+            # 시스템 초기화 중 - 로딩 화면 표시
+            render_loading_screen(health_report)
     else:
-        # 시스템 초기화 중 - 로딩 화면 표시
-        render_loading_screen(status_info)
+        # Fallback: 기존 함수 사용
+        try:
+            is_ready, status_dict = check_system_ready(api_client)
+            if is_ready:
+                render_main_app()
+            else:
+                # 기본 로딩 화면
+                st.info("🔄 시스템 초기화 중입니다...")
+                st.write("시스템 상태를 확인하고 있습니다. 잠시만 기다려주세요.")
+                time.sleep(3)
+                rerun()
+        except Exception as e:
+            st.error(f"시스템 상태 확인 실패: {e}")
+            st.info("메인 화면으로 계속 진행합니다.")
+            render_main_app()
 
 
 if __name__ == "__main__":

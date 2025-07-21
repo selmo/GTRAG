@@ -242,7 +242,7 @@ fi
 echo -e "\n${BLUE}🔗 외부 서비스 상태 (참고용)...${NC}"
 
 # Ollama 상태 확인
-OLLAMA_HOST=${OLLAMA_HOST:-"http://172.16.15.112:11434"}
+OLLAMA_HOST=${OLLAMA_HOST:-"http://localhost:11434"}
 echo -n "   Ollama 서버 ($OLLAMA_HOST): "
 if curl -s --connect-timeout 3 "$OLLAMA_HOST/api/tags" > /dev/null 2>&1; then
     echo -e "${GREEN}실행 중${NC} (외부 서비스)"

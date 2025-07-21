@@ -18,6 +18,7 @@ Pillow==10.4.0                  # 이미지 처리 (업로드 파일 미리보�
 # --- Utilities ---
 python-dateutil==2.9.0         # 날짜 처리
 pytz==2024.1                   # 타임존 처리
+rarfile
 
 # --- JSON & Data Serialization ---
 # (Python 내장 json 모듈 사용)

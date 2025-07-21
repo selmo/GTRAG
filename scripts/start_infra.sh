@@ -75,7 +75,7 @@ fi
 # 기본 포트 설정
 QDRANT_PORT=${QDRANT_PORT:-6333}
 REDIS_PORT=${REDIS_PORT:-6379}
-OLLAMA_HOST=${OLLAMA_HOST:-"http://172.16.15.112:11434"}
+OLLAMA_HOST=${OLLAMA_HOST:-"http://localhost:11434"}
 
 echo "   Qdrant 포트: $QDRANT_PORT"
 echo "   Redis 포트: $REDIS_PORT"

@@ -4,12 +4,13 @@
 import streamlit as st
 import sys
 from pathlib import Path
+
+from frontend.ui.utils.client_manager import ClientManager
 from frontend.ui.utils.streamlit_helpers import rerun
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from frontend.ui.utils.api_client import APIClient
 from frontend.ui.components.searching import render_search_interface
 
 # 페이지 설정
@@ -101,7 +102,7 @@ mark {
 """, unsafe_allow_html=True)
 
 # API 클라이언트 초기화
-api_client = APIClient()
+api_client = ClientManager.get_client()
 
 # 헤더
 st.title("🔍 문서 검색")

@@ -3,6 +3,7 @@
 Streamlit 세션 상태를 효율적으로 관리하기 위한 헬퍼 함수들
 """
 import streamlit as st
+from frontend.ui.utils.local_settings import load_settings   # 추가
 from typing import Any, Dict, List
 from datetime import datetime
 import json
@@ -22,8 +23,8 @@ class SessionManager:
         if 'uploaded_files' not in st.session_state or not st.session_state.uploaded_files:
             try:
                 # 순환 의존성 방지를 위해 지연 import
-                from frontend.ui.utils.api_client import APIClient
-                docs = APIClient().list_documents()  # 백엔드에서 최신 목록 수집
+                from frontend.ui.utils.client_manager import ClientManager
+                docs = ClientManager.get_client().list_documents()  # 백엔드에서 최신 목록 수집
 
                 # 누락 필드 기본값 보강 (표시 오류 방지)
                 for d in docs:
@@ -40,8 +41,25 @@ class SessionManager:
         
         if 'search_query' not in st.session_state:
             st.session_state.search_query = ""
-        
-        # 설정 관련
+
+        # -------------------------
+        # A단계 ─ 로컬 자동복구
+        # -------------------------
+        if 'local_settings_loaded' not in st.session_state:
+            local = load_settings()
+
+            if local:  # 로컬 파일이 있을 때만 덮어쓰기
+                st.session_state.ai_settings = local.get('ai_settings',
+                                                         SessionManager.get_default_ai_settings())
+                st.session_state.advanced_settings = local.get('advanced_settings',
+                                                               SessionManager.get_default_advanced_settings())
+                st.session_state.user_preferences = local.get('user_preferences',
+                                                              SessionManager.get_default_user_preferences())
+                SessionManager._hydrate_flat_keys_from_ai()  # ⭐ 추가
+
+            st.session_state.local_settings_loaded = True
+
+        # 기본값(최초 실행 시)
         if 'ai_settings' not in st.session_state:
             st.session_state.ai_settings = SessionManager.get_default_ai_settings()
         
@@ -216,6 +234,7 @@ class SessionManager:
                 settings = import_data["settings"]
                 if "ai" in settings:
                     st.session_state.ai_settings = settings["ai"]
+                    SessionManager._hydrate_flat_keys_from_ai()  # ⭐ 추가
                 if "advanced" in settings:
                     st.session_state.advanced_settings = settings["advanced"]
                 if "user" in settings:
@@ -236,6 +255,38 @@ class SessionManager:
             "session_duration": None,  # 구현 필요
             "total_queries": sum(1 for m in st.session_state.get("messages", []) if m.get("role") == "user")
         }
+
+    @staticmethod
+    def _hydrate_flat_keys_from_ai():
+        """ai_settings → legacy 평면 키 동기화"""
+        ai = st.session_state.get("ai_settings", {})
+        llm = ai.get("llm", {})
+        rag = ai.get("rag", {})
+        api = ai.get("api", {})
+
+        mapping = {
+            # LLM
+            ("selected_model", llm.get("model")),
+            ("temperature", llm.get("temperature")),
+            ("max_tokens", llm.get("max_tokens")),
+            ("top_p", llm.get("top_p")),
+            ("frequency_penalty", llm.get("frequency_penalty")),
+            ("system_prompt", llm.get("system_prompt")),
+            # RAG
+            ("rag_top_k", rag.get("top_k")),
+            ("min_similarity", rag.get("min_similarity")),
+            ("context_window", rag.get("context_window")),
+            ("chunk_size", rag.get("chunk_size")),
+            ("chunk_overlap", rag.get("chunk_overlap")),
+            ("embedding_model", rag.get("embedding_model")),
+            # API
+            ("api_timeout", api.get("timeout")),
+            ("rag_timeout", api.get("rag_timeout")),
+        }
+
+        for key, val in mapping:
+            if val is not None:
+                st.session_state[key] = val
 
 
 def init_page_state(page_name: str):
