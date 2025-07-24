@@ -140,6 +140,34 @@ fi
 # 6. Docker 볼륨 생성
 echo -e "\n${BLUE}💾 Docker 볼륨 설정...${NC}"
 
+############################################
+# (파일 상단 util 함수 영역 - 아무 곳에 삽입)
+############################################
+create_qdrant_collection() {
+  local collection_name=${1:-chunks}      # 기본값: chunks
+  local vector_size=${2:-1024}            # 모델 임베딩 차원
+  local distance=${3:-Cosine}             # Cosine | Dot | Euclid
+
+  # 이미 컬렉션이 있으면 바로 종료
+  if curl -s "http://localhost:$QDRANT_PORT/collections/$collection_name" \
+       | grep -q '"status":"green"'; then
+    echo "   ➖ 컬렉션 '$collection_name' 이미 존재 – 스킵"
+    return 0
+  fi
+
+  echo "   ➕ 컬렉션 '$collection_name' 생성 중..."
+  curl -s -X PUT "http://localhost:$QDRANT_PORT/collections/$collection_name" \
+       -H "Content-Type: application/json" \
+       -d "{
+             \"vectors\": {
+               \"size\": ${vector_size},
+               \"distance\": \"${distance}\"
+             }
+           }" \
+    && echo "   ✅ 생성 완료" \
+    || echo "   ❌ 생성 실패"
+}
+
 create_volume() {
     local volume_name=$1
     local description=$2
@@ -191,7 +219,7 @@ start_qdrant() {
             -v qdrant_data:/qdrant/storage \
             --network $NETWORK_NAME \
             --restart unless-stopped \
-            --health-cmd="curl -f http://localhost:6333/health || exit 1" \
+            --health-cmd="curl -f http://localhost:6333/healthz || exit 1" \
             --health-interval=10s \
             --health-timeout=5s \
             --health-retries=5 \
@@ -212,12 +240,16 @@ start_qdrant() {
         if curl -s --connect-timeout 2 "http://localhost:$QDRANT_PORT/health" > /dev/null 2>&1; then
             echo -e "\n   ${GREEN}✅ Qdrant 서비스 준비 완료! (${attempt}초)${NC}"
 
-            # 추가 API 테스트
+            # ① API 테스트
             if curl -s "http://localhost:$QDRANT_PORT/collections" > /dev/null 2>&1; then
                 echo -e "   ${GREEN}✅ Qdrant API 테스트 성공${NC}"
             else
                 echo -e "   ${YELLOW}⚠️  Qdrant 기본 동작하지만 API 응답 지연${NC}"
             fi
+
+            # ② 컬렉션이 없을 때만 생성
+            create_qdrant_collection "chunks" "${EMBEDDING_DIM:-1024}" "${QDRANT_DISTANCE:-Cosine}"
+
             return 0
         fi
 

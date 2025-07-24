@@ -37,30 +37,31 @@ def render_search_interface(api_client):
             )
 
     # 검색 입력
-    col1, col2, col3 = st.columns([5, 2, 1])
+    with st.form(key="search_form", clear_on_submit=False):
+        col1, col2, col3 = st.columns([5, 2, 1])
 
-    with col1:
-        search_query = st.text_input(
-            "검색어를 입력하세요",
-            placeholder="예: 계약 조건, 납품 기한, 품질 기준...",
-            label_visibility="collapsed",
-            key="main_search_input"
-        )
+        with col1:
+            search_query = st.text_input(
+                "검색어를 입력하세요",
+                placeholder="예: 계약 조건, 납품 기한, 품질 기준...",
+                label_visibility="collapsed",
+                key="main_search_input",
+            )
 
-    with col2:
-        top_k = st.number_input(
-            "검색 결과 수",
-            min_value=1,
-            max_value=20,
-            value=5,
-            label_visibility="collapsed"
-        )
+        with col2:
+            top_k = st.number_input(
+                "검색 결과 수",
+                min_value=1,
+                max_value=20,
+                value=5,
+                label_visibility="collapsed",
+            )
 
-    with col3:
-        search_button = st.button("🔍", type="primary", use_container_width=True)
+        with col3:
+            submitted = st.form_submit_button("🔍", type="primary", use_container_width=True)
 
-    # 검색 실행
-    if search_button or (search_query and st.session_state.get('auto_search', False)):
+    # Enter 키 또는 버튼 → submitted=True
+    if submitted:
         perform_search(api_client, search_query, top_k, min_score, show_preview)
 
     # 검색 기록

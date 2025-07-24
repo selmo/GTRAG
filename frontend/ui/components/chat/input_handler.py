@@ -104,7 +104,9 @@ class ChatInputHandler:
                         clear_loading(status)
                         answer_placeholder.empty()
                         ctx.add_error(exc)
-                        self._handle_error(str(exc), settings["model"], answer_placeholder)
+                        model = 'gemma3n:latest'
+                        # settings["model"]
+                        self._handle_error(str(exc), model, answer_placeholder)
 
             rerun()  # immediate UI refresh so that new messages appear
             return True
@@ -129,7 +131,34 @@ class ChatInputHandler:
         }
 
     def _handle_error(self, error_msg: str, model: str, placeholder):
-        from frontend.ui.utils.error_handler import handle_api_error
+        from frontend.ui.utils.error_handler import error_handler, GTRagError, ErrorType, ErrorSeverity
 
         placeholder.empty()
-        handle_api_error(error_msg, model_used=model)
+
+        # 에러 메시지로부터 Exception 객체 생성
+        try:
+            # 모델 관련 에러인지 확인
+            if "model" in error_msg.lower() or model:
+                error_exception = GTRagError(
+                    f"모델 '{model}' 처리 중 오류: {error_msg}",
+                    error_type=ErrorType.MODEL_CONFIG,
+                    severity=ErrorSeverity.MEDIUM,
+                    suggestions=[
+                        "설정 페이지에서 모델을 다시 선택하세요",
+                        "Ollama 서버가 실행 중인지 확인하세요",
+                        "잠시 후 다시 시도해보세요"
+                    ]
+                )
+            else:
+                # 일반적인 API 오류
+                error_exception = Exception(error_msg)
+
+            # 통합 에러 핸들러 사용
+            error_handler.handle_error(error_exception, f"모델 '{model}' API 호출")
+
+        except Exception as e:
+            # 에러 처리 중 오류가 발생한 경우 기본 표시
+            st.error(f"❌ 오류: {error_msg}")
+            if model:
+                st.info(f"사용된 모델: {model}")
+            st.info("잠시 후 다시 시도해보세요.")

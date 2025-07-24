@@ -9,6 +9,7 @@ python-multipart==0.0.12        # 파일 업로드 지원
 # --- Data Models & Validation ---
 pydantic==2.8.2                 # 데이터 모델 및 검증
 pydantic-core==2.20.1           # pydantic 핵심 기능
+pydantic_settings
 
 # --- AI/ML Core ---
 sentence-transformers==3.0.1    # E5 다국어 임베딩 모델

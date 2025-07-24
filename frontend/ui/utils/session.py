@@ -3,7 +3,6 @@
 Streamlit 세션 상태를 효율적으로 관리하기 위한 헬퍼 함수들
 """
 import streamlit as st
-from frontend.ui.utils.local_settings import load_settings   # 추가
 from typing import Any, Dict, List
 from datetime import datetime
 import json
@@ -42,22 +41,22 @@ class SessionManager:
         if 'search_query' not in st.session_state:
             st.session_state.search_query = ""
 
-        # -------------------------
-        # A단계 ─ 로컬 자동복구
-        # -------------------------
-        if 'local_settings_loaded' not in st.session_state:
-            local = load_settings()
-
-            if local:  # 로컬 파일이 있을 때만 덮어쓰기
-                st.session_state.ai_settings = local.get('ai_settings',
-                                                         SessionManager.get_default_ai_settings())
-                st.session_state.advanced_settings = local.get('advanced_settings',
-                                                               SessionManager.get_default_advanced_settings())
-                st.session_state.user_preferences = local.get('user_preferences',
-                                                              SessionManager.get_default_user_preferences())
-                SessionManager._hydrate_flat_keys_from_ai()  # ⭐ 추가
-
-            st.session_state.local_settings_loaded = True
+        # # -------------------------
+        # # A단계 ─ 로컬 자동복구
+        # # -------------------------
+        # if 'local_settings_loaded' not in st.session_state:
+        #     local = load_settings()
+        #
+        #     if local:  # 로컬 파일이 있을 때만 덮어쓰기
+        #         st.session_state.ai_settings = local.get('ai_settings',
+        #                                                  SessionManager.get_default_ai_settings())
+        #         st.session_state.advanced_settings = local.get('advanced_settings',
+        #                                                        SessionManager.get_default_advanced_settings())
+        #         st.session_state.user_preferences = local.get('user_preferences',
+        #                                                       SessionManager.get_default_user_preferences())
+        #         SessionManager._hydrate_flat_keys_from_ai()  # ⭐ 추가
+        #
+        #     st.session_state.local_settings_loaded = True
 
         # 기본값(최초 실행 시)
         if 'ai_settings' not in st.session_state:
@@ -79,7 +78,7 @@ class SessionManager:
         """기본 AI 설정 반환"""
         return {
             "llm": {
-                "model": "gemma3:27b",
+                "model": "gemma3n:latest",
                 "temperature": 0.3,
                 "max_tokens": 1000,
                 "top_p": 0.9,

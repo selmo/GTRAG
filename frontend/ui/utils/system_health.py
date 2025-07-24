@@ -296,19 +296,32 @@ class SystemHealthManager:
                     logger.warning("Unexpected health response: %s", health_data)
                     health_data = {"services": {}}  # 최소 구조 보장
 
-                service_data = health_data.get("services", {})
-
-                # 서비스별 정보 파싱 (기존 로직 유지)
-                for service_name in ['qdrant', 'ollama', 'celery']:
-                    service_info = service_data.get(service_name, {})
-                    service_status = service_info.get("status", "unknown")
-
-                    services[service_name] = ServiceInfo(
-                        name=service_name,
-                        status=ServiceStatus.CONNECTED if service_status == "connected"
-                               else ServiceStatus.DISCONNECTED,
-                        message=service_info.get("message", ""),
-                        details=cls._extract_service_details(service_name, service_info)
+                # ── 1) v2 중첩·v1 평면 응답 모두 수용 ─────────────────
+                if "services" in health_data:         # < v2 형식
+                    service_data = health_data["services"]
+                else:                                 # < v1 형식 (bool/str)
+                    service_data = {
+                        k: {"status": v}
+                        for k, v in health_data.items()
+                        if k in {"qdrant", "ollama", "celery"}
+                    }
+                # ── 2) 상태값 → Enum 매핑 함수 ────────────────────────
+                def _to_status(raw) -> ServiceStatus:
+                    if isinstance(raw, bool):
+                        return ServiceStatus.CONNECTED if raw else ServiceStatus.DISCONNECTED
+                    if isinstance(raw, str):
+                        return ServiceStatus.CONNECTED if raw.lower() in {
+                            "connected", "ready", "healthy", "ok"
+                        } else ServiceStatus.DISCONNECTED
+                    return ServiceStatus.UNKNOWN
+                # ── 3) 서비스별 ServiceInfo 생성 ──────────────────────
+                for svc in ["qdrant", "ollama", "celery"]:
+                    raw = service_data.get(svc, {}).get("status")
+                    services[svc] = ServiceInfo(
+                        name=svc,
+                        status=_to_status(raw),
+                        message=service_data.get(svc, {}).get("message", ""),
+                        details=cls._extract_service_details(svc, service_data.get(svc, {}))
                     )
             else:
                 # 실패 시 모든 서비스 UNKNOWN

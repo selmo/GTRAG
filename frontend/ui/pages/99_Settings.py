@@ -78,10 +78,120 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 # ===============================
-# AI 설정 탭 - 개선된 버전
+# AI 설정 탭 - 통합된 LLM 설정
 # ===============================
 with tab1:
     st.header(f"{Constants.Icons.AI} AI 설정")
+
+    # ===============================
+    # 페이지 로딩 시 백엔드 설정 동기화
+    # ===============================
+
+    # 페이지 로딩 시 백엔드에서 설정을 가져와서 세션 상태에 반영
+    if 'settings_loaded' not in st.session_state:
+        with st.spinner("저장된 설정을 불러오는 중..."):
+            try:
+                # 백엔드에서 설정 가져오기
+                current_settings = api_client.get_settings()
+
+                if current_settings:
+                    # 백엔드 설정을 세션 상태에 반영
+                    if 'ollama_host' in current_settings:
+                        st.session_state.backend_ollama_host = current_settings['ollama_host']
+
+                    # LLM 파라미터 동기화
+                    if 'llm' in current_settings:
+                        llm_settings = current_settings['llm']
+                        for param in ['temperature', 'max_tokens', 'top_p', 'frequency_penalty', 'system_prompt']:
+                            if param in llm_settings:
+                                st.session_state[f'backend_{param}'] = llm_settings[param]
+
+                    # RAG 파라미터 동기화
+                    if 'rag' in current_settings:
+                        rag_settings = current_settings['rag']
+                        param_mapping = {
+                            'top_k': 'rag_top_k',
+                            'min_score': 'min_similarity',
+                            'context_window': 'context_window',
+                            'chunk_size': 'chunk_size',
+                            'chunk_overlap': 'chunk_overlap',
+                            'embed_model': 'embedding_model'
+                        }
+                        for backend_key, session_key in param_mapping.items():
+                            if backend_key in rag_settings:
+                                st.session_state[f'backend_{session_key}'] = rag_settings[backend_key]
+
+                    st.success(f"✅ 저장된 설정을 불러왔습니다 ({len(current_settings)}개 카테고리)")
+
+                else:
+                    st.info("ℹ️ 저장된 설정이 없어 기본값을 사용합니다")
+
+            except Exception as e:
+                st.warning(f"⚠️ 설정 불러오기 실패: {str(e)}")
+                st.info("기본값을 사용합니다")
+
+            # 로딩 완료 표시
+            st.session_state.settings_loaded = True
+
+    # 설정 동기화 상태 표시
+    with st.expander("🔄 설정 동기화 상태", expanded=False):
+        col_sync1, col_sync2 = st.columns(2)
+
+        with col_sync1:
+            if st.button("🔄 설정 다시 불러오기", key="reload_settings_btn"):
+                with st.spinner("설정을 다시 불러오는 중..."):
+                    try:
+                        current_settings = api_client.get_settings()
+                        st.success(f"✅ 설정 재로딩 완료")
+
+                        with st.expander("불러온 설정 내용"):
+                            st.json(current_settings)
+
+                        # 세션 상태 초기화 후 다시 로딩
+                        st.session_state.settings_loaded = False
+                        st.info("🔄 페이지를 새로고침하여 설정을 적용하세요")
+
+                    except Exception as e:
+                        st.error(f"❌ 설정 재로딩 실패: {str(e)}")
+
+        with col_sync2:
+            if st.button("🔍 설정 파일 상태", key="check_settings_file"):
+                with st.spinner("설정 파일 상태 확인 중..."):
+                    try:
+                        import requests
+                        import os
+
+                        # 로컬 파일 상태 확인
+                        settings_file = "./data/rag_settings.json"
+                        file_exists = os.path.exists(settings_file)
+
+                        st.write("**로컬 파일 상태:**")
+                        st.write(f"- 파일 경로: `{settings_file}`")
+                        st.write(f"- 파일 존재: {'✅' if file_exists else '❌'}")
+
+                        if file_exists:
+                            file_size = os.path.getsize(settings_file)
+                            st.write(f"- 파일 크기: {file_size} bytes")
+
+                            # 파일 내용 미리보기
+                            try:
+                                with open(settings_file, 'r', encoding='utf-8') as f:
+                                    content = f.read()
+
+                                with st.expander("파일 내용 미리보기"):
+                                    st.code(content, language="json")
+
+                            except Exception as e:
+                                st.error(f"파일 읽기 실패: {str(e)}")
+
+                        # 백엔드 API 확인
+                        st.write("**백엔드 API 상태:**")
+                        current_settings = api_client.get_settings()
+                        st.success("✅ 백엔드 API 정상 작동")
+                        st.write(f"반환된 설정 카테고리: {list(current_settings.keys())}")
+
+                    except Exception as e:
+                        st.error(f"❌ 상태 확인 실패: {str(e)}")
 
     # 연결 상태 확인 섹션
     st.subheader(f"{Constants.Icons.STATUS_OK} 연결 상태")
@@ -143,18 +253,113 @@ with tab1:
 
     st.divider()
 
-    # LLM 설정
+    # ===============================
+    # 통합된 LLM 설정 섹션
+    # ===============================
     st.subheader("LLM (언어 모델) 설정")
+
+    # 현재 설정 가져오기 - 백엔드와 세션 상태 병합
+    try:
+        backend_settings = api_client.get_settings()
+    except:
+        backend_settings = {}
 
     col1, col2 = st.columns(2)
 
     with col1:
-        # 모델 목록 새로고침
+        # === 서버 설정 ===
+        st.write("**서버 설정**")
+
+        # 백엔드 설정 우선, 없으면 기본값
+        default_ollama_host = (
+                st.session_state.get("backend_ollama_host") or
+                backend_settings.get("ollama_host") or
+                "http://localhost:11434"
+        )
+
+        ollama_host = st.text_input(
+            "Ollama Host",
+            value=default_ollama_host,
+            help="Ollama LLM 서버 주소",
+            key="ollama_host_input"
+        )
+
+        # === 빠른 진단 섹션 ===
+        st.write("**빠른 진단**")
+        col_debug1, col_debug2, col_debug3 = st.columns(3)
+
+        with col_debug1:
+            if st.button("🔍 API 상태", key="quick_debug_api"):
+                try:
+                    import requests
+
+                    response = requests.get(f"{api_client.base_url}/v1/models", timeout=10)
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        if isinstance(data, list) and len(data) > 0:
+                            st.success(f"✅ API 정상: {len(data)}개 모델")
+                            st.write("모델:", ", ".join(data[:3]) + ("..." if len(data) > 3 else ""))
+                        elif isinstance(data, list) and len(data) == 0:
+                            st.warning("⚠️ API 정상이지만 모델 없음")
+                        else:
+                            st.info(f"📊 응답: {type(data)}")
+                    else:
+                        st.error(f"❌ API 오류: HTTP {response.status_code}")
+
+                except Exception as e:
+                    st.error(f"❌ API 연결 실패: {str(e)}")
+
+        with col_debug2:
+            if st.button("🤖 Ollama", key="quick_debug_ollama"):
+                try:
+                    import requests
+
+                    response = requests.get("http://localhost:11434/api/tags", timeout=5)
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        models = data.get("models", [])
+                        if models:
+                            st.success(f"✅ Ollama: {len(models)}개 모델")
+                            for model in models[:3]:
+                                st.write(f"• {model.get('name', 'Unknown')}")
+                            if len(models) > 3:
+                                st.write(f"... 외 {len(models) - 3}개")
+                        else:
+                            st.warning("⚠️ Ollama 정상, 모델 없음")
+                    else:
+                        st.error(f"❌ Ollama 오류: HTTP {response.status_code}")
+
+                except requests.exceptions.ConnectionError:
+                    st.error("❌ Ollama 서버 미실행")
+                    st.info("해결: `ollama serve`")
+                except Exception as e:
+                    st.error(f"❌ 연결 실패: {str(e)}")
+
+        with col_debug3:
+            if st.button("🔧 Backend", key="quick_debug_backend"):
+                try:
+                    settings = api_client.get_settings()
+                    st.success("✅ Backend 정상")
+
+                    models_resp = api_client.get_available_models()
+                    if models_resp:
+                        st.success(f"✅ {len(models_resp)}개 모델 감지")
+                    else:
+                        st.warning("⚠️ 모델 목록 비어있음")
+
+                except Exception as e:
+                    st.error(f"❌ Backend 오류: {str(e)}")
+
+        st.divider()
+
+        # === 모델 목록 새로고침 ===
         refresh_col, auto_col = st.columns([2, 1])
 
         with refresh_col:
             if st.button(f"{Constants.Icons.REFRESH} 모델 목록 새로고침",
-                        help="서버에서 최신 모델 목록을 가져옵니다", key="refresh_models_btn"):
+                         help="서버에서 최신 모델 목록을 가져옵니다", key="refresh_models_btn"):
                 with st.spinner("모델 목록 로딩 중..."):
                     with ErrorContext("모델 목록 로딩") as ctx:
                         try:
@@ -166,7 +371,7 @@ with tab1:
                                 st.success(f"{Constants.Icons.STATUS_OK} {len(available_models)}개 모델을 찾았습니다")
                             else:
                                 StatusIndicator.render_status("error", "사용 가능한 모델이 없습니다",
-                                                            "Ollama 서버를 확인하세요")
+                                                              "Ollama 서버를 확인하세요")
                                 st.session_state.available_models = []
 
                         except Exception as e:
@@ -175,7 +380,7 @@ with tab1:
 
         with auto_col:
             auto_refresh = st.checkbox("자동", help="페이지 로드 시 자동으로 모델 목록을 가져옵니다",
-                                     key="auto_refresh_models")
+                                       key="auto_refresh_models")
 
         # 자동 로딩 처리
         if 'available_models' not in st.session_state or auto_refresh:
@@ -201,7 +406,8 @@ with tab1:
             last_updated = st.session_state.models_last_updated
             st.caption(f"마지막 업데이트: {last_updated.strftime('%H:%M:%S')}")
 
-        # 모델 선택
+        # === 모델 선택 ===
+        st.write("**모델 선택**")
         if available_models and len(available_models) > 0:
             current_model = st.session_state.get('selected_model')
 
@@ -234,15 +440,27 @@ with tab1:
 
         st.divider()
 
-        # 타임아웃 설정
+        # === 연결 및 타임아웃 설정 ===
         st.write("**연결 및 타임아웃 설정**")
 
-        # 설정값을 상수에서 가져오기
+        # 백엔드 설정 우선 사용
+        default_api_timeout = (
+                backend_settings.get("llm", {}).get("api_timeout") or
+                st.session_state.get('api_timeout') or
+                config.api.timeout
+        )
+
+        default_rag_timeout = (
+                backend_settings.get("llm", {}).get("rag_timeout") or
+                st.session_state.get('rag_timeout') or
+                config.api.timeout
+        )
+
         api_timeout = st.slider(
             "API 타임아웃 (초)",
             min_value=30,
             max_value=600,
-            value=st.session_state.get('api_timeout', config.api.timeout),
+            value=int(default_api_timeout),
             step=30,
             help="API 요청의 최대 대기 시간",
             key="api_timeout_slider"
@@ -252,7 +470,7 @@ with tab1:
             "RAG 생성 타임아웃 (초)",
             min_value=60,
             max_value=900,
-            value=st.session_state.get('rag_timeout', config.api.timeout),
+            value=int(default_rag_timeout),
             step=30,
             help="답변 생성의 최대 대기 시간",
             key="rag_timeout_slider"
@@ -265,27 +483,40 @@ with tab1:
 
         st.divider()
 
-        # 모델 파라미터 설정 (모델이 있을 때만)
+        # === 모델 파라미터 설정 ===
         if selected_model:
             st.write("**모델 파라미터**")
 
-            # Temperature - 상수 사용
+            # 백엔드 설정과 세션 상태 병합하여 기본값 설정
+            default_temperature = (
+                    st.session_state.get("backend_temperature") or
+                    backend_settings.get("llm", {}).get("temperature") or
+                    st.session_state.get('temperature') or
+                    Constants.Defaults.TEMPERATURE
+            )
+
+            default_max_tokens = (
+                    st.session_state.get("backend_max_tokens") or
+                    backend_settings.get("llm", {}).get("max_tokens") or
+                    st.session_state.get('max_tokens') or
+                    Constants.Defaults.MAX_TOKENS
+            )
+
             temperature = st.slider(
                 "Temperature (창의성)",
                 min_value=Constants.Limits.MIN_TEMPERATURE,
                 max_value=Constants.Limits.MAX_TEMPERATURE,
-                value=st.session_state.get('temperature', Constants.Defaults.TEMPERATURE),
+                value=float(default_temperature),
                 step=0.1,
                 help="낮을수록 일관된 답변, 높을수록 창의적인 답변",
                 key="temperature_slider"
             )
 
-            # Max tokens - 상수 사용
             max_tokens = st.number_input(
                 "최대 토큰 수",
                 min_value=Constants.Limits.MIN_TOKENS,
                 max_value=Constants.Limits.MAX_TOKENS,
-                value=st.session_state.get('max_tokens', Constants.Defaults.MAX_TOKENS),
+                value=int(default_max_tokens),
                 step=100,
                 help="생성할 답변의 최대 길이",
                 key="max_tokens_input"
@@ -294,7 +525,7 @@ with tab1:
             StatusIndicator.render_status("warning", "모델을 선택해야 파라미터를 설정할 수 있습니다")
 
     with col2:
-        # 선택된 모델 정보 표시
+        # === 선택된 모델 정보 표시 ===
         if selected_model:
             with st.expander(f"{Constants.Icons.DOCUMENT} 모델 정보", expanded=True):
                 with st.spinner("모델 정보 로딩 중..."):
@@ -345,36 +576,55 @@ with tab1:
                         except Exception as e:
                             ctx.add_error(e)
 
-        # 추가 파라미터 (모델이 있을 때만)
+        # === 추가 파라미터 ===
         if selected_model:
             st.write("**고급 파라미터**")
 
-            # Top P
+            # 백엔드 설정 우선 사용
+            default_top_p = (
+                    st.session_state.get("backend_top_p") or
+                    backend_settings.get("llm", {}).get("top_p") or
+                    st.session_state.get('top_p') or
+                    0.9
+            )
+
+            default_frequency_penalty = (
+                    st.session_state.get("backend_frequency_penalty") or
+                    backend_settings.get("llm", {}).get("frequency_penalty") or
+                    st.session_state.get('frequency_penalty') or
+                    0.0
+            )
+
+            default_system_prompt = (
+                    st.session_state.get("backend_system_prompt") or
+                    backend_settings.get("llm", {}).get("system_prompt") or
+                    st.session_state.get('system_prompt') or
+                    Constants.Defaults.SYSTEM_PROMPT
+            )
+
             top_p = st.slider(
                 "Top P",
                 min_value=0.0,
                 max_value=1.0,
-                value=st.session_state.get('top_p', 0.9),
+                value=float(default_top_p),
                 step=0.05,
                 help="확률 분포 상위 P%만 고려",
                 key="top_p_slider"
             )
 
-            # Frequency penalty
             frequency_penalty = st.slider(
                 "Frequency Penalty",
                 min_value=0.0,
                 max_value=2.0,
-                value=st.session_state.get('frequency_penalty', 0.0),
+                value=float(default_frequency_penalty),
                 step=0.1,
                 help="반복 단어 사용 억제",
                 key="frequency_penalty_slider"
             )
 
-            # System prompt - 상수 사용
             system_prompt = st.text_area(
                 "시스템 프롬프트",
-                value=st.session_state.get('system_prompt', Constants.Defaults.SYSTEM_PROMPT),
+                value=str(default_system_prompt),
                 height=150,
                 help="AI의 기본 행동 지침",
                 key="system_prompt_area"
@@ -384,52 +634,92 @@ with tab1:
 
     st.divider()
 
+    # ===============================
     # RAG 설정 (모델이 있을 때만)
+    # ===============================
     if selected_model:
         st.subheader("RAG (검색 증강 생성) 설정")
 
         col1, col2 = st.columns(2)
 
         with col1:
-            # 검색 문서 수 - 상수 사용
+            # 백엔드 RAG 설정 사용
+            rag_backend = backend_settings.get("rag", {})
+
+            # 검색 문서 수
+            default_rag_top_k = (
+                    st.session_state.get("backend_rag_top_k") or
+                    rag_backend.get("top_k") or
+                    st.session_state.get('rag_top_k') or
+                    Constants.Defaults.TOP_K
+            )
+
             rag_top_k = st.slider(
                 "검색할 문서 수",
                 min_value=Constants.Limits.MIN_TOP_K,
                 max_value=Constants.Limits.MAX_TOP_K,
-                value=st.session_state.get('rag_top_k', Constants.Defaults.TOP_K),
+                value=int(default_rag_top_k),
                 help="답변 생성 시 참조할 문서의 개수",
                 key="rag_top_k_slider"
             )
 
-            # 최소 유사도 - 상수 사용
+            # 최소 유사도
+            default_min_similarity = (
+                    st.session_state.get("backend_min_similarity") or
+                    rag_backend.get("min_score") or
+                    st.session_state.get('min_similarity') or
+                    Constants.Defaults.MIN_SIMILARITY
+            )
+
             min_similarity = st.slider(
                 "최소 유사도 임계값",
                 min_value=Constants.Limits.MIN_SIMILARITY,
                 max_value=Constants.Limits.MAX_SIMILARITY,
-                value=st.session_state.get('min_similarity', Constants.Defaults.MIN_SIMILARITY),
+                value=float(default_min_similarity),
                 step=0.05,
                 help="이 값 이상의 유사도를 가진 문서만 사용",
                 key="min_similarity_slider"
             )
 
-            # 컨텍스트 길이 - 상수 사용
+            # 컨텍스트 길이
+            default_context_window = (
+                    st.session_state.get("backend_context_window") or
+                    rag_backend.get("context_window") or
+                    st.session_state.get('context_window') or
+                    Constants.Defaults.CONTEXT_WINDOW
+            )
+
             context_window = st.number_input(
                 "컨텍스트 윈도우 크기",
                 min_value=500,
                 max_value=8000,
-                value=st.session_state.get('context_window', Constants.Defaults.CONTEXT_WINDOW),
+                value=int(default_context_window),
                 step=500,
                 help="LLM에 제공할 최대 컨텍스트 길이",
                 key="context_window_input"
             )
 
         with col2:
-            # 청크 설정 - 상수 사용
+            # 청크 설정
+            default_chunk_size = (
+                    st.session_state.get("backend_chunk_size") or
+                    rag_backend.get("chunk_size") or
+                    st.session_state.get('chunk_size') or
+                    Constants.Defaults.CHUNK_SIZE
+            )
+
+            default_chunk_overlap = (
+                    st.session_state.get("backend_chunk_overlap") or
+                    rag_backend.get("chunk_overlap") or
+                    st.session_state.get('chunk_overlap') or
+                    Constants.Defaults.CHUNK_OVERLAP
+            )
+
             chunk_size = st.number_input(
                 "청크 크기",
                 min_value=100,
                 max_value=2000,
-                value=st.session_state.get('chunk_size', Constants.Defaults.CHUNK_SIZE),
+                value=int(default_chunk_size),
                 step=100,
                 help="문서를 분할하는 기본 크기",
                 key="chunk_size_input"
@@ -439,88 +729,150 @@ with tab1:
                 "청크 중첩",
                 min_value=0,
                 max_value=500,
-                value=st.session_state.get('chunk_overlap', Constants.Defaults.CHUNK_OVERLAP),
+                value=int(default_chunk_overlap),
                 step=50,
                 help="청크 간 중첩되는 텍스트 길이",
                 key="chunk_overlap_input"
             )
 
-            # 임베딩 모델 - 상수 사용
+            # 임베딩 모델
+            embedding_options = ["intfloat/multilingual-e5-large-instruct", "intfloat/e5-large-v2"]
+            default_embedding_model = (
+                    st.session_state.get("backend_embedding_model") or
+                    rag_backend.get("embed_model") or
+                    st.session_state.get('embedding_model') or
+                    Constants.Defaults.EMBEDDING_MODEL
+            )
+
+            try:
+                embedding_index = embedding_options.index(default_embedding_model)
+            except ValueError:
+                embedding_index = 0
+
             embedding_model = st.selectbox(
                 "임베딩 모델",
-                ["intfloat/multilingual-e5-large-instruct", "intfloat/e5-large-v2"],
-                index=0 if st.session_state.get('embedding_model', Constants.Defaults.EMBEDDING_MODEL) == "intfloat/multilingual-e5-large-instruct" else 1,
+                embedding_options,
+                index=embedding_index,
                 help="문서 벡터화에 사용할 모델",
                 key="embedding_model_select"
             )
     else:
         StatusIndicator.render_status("warning", "모델을 선택해야 RAG 설정을 할 수 있습니다")
 
-    # 설정 저장 버튼
+    # ===============================
+    # 통합된 설정 저장 버튼
+    # ===============================
     col_save, col_reset, col_test = st.columns([2, 1, 1])
 
     with col_save:
         if selected_model:
-            if st.button(f"{Constants.Icons.DOWNLOAD} AI 설정 저장", type="primary", key="save_ai_settings"):
-                settings = {
-                    "llm": {
-                        "model": selected_model,
-                        "temperature": temperature,
-                        "max_tokens": max_tokens,
-                        "top_p": top_p,
-                        "frequency_penalty": frequency_penalty,
-                        "system_prompt": system_prompt
-                    },
-                    "rag": {
-                        "top_k": rag_top_k,
-                        "min_similarity": min_similarity,
-                        "context_window": context_window,
-                        "chunk_size": chunk_size,
-                        "chunk_overlap": chunk_overlap,
-                        "embedding_model": embedding_model
-                    },
-                    "api": {
-                        "timeout": api_timeout,
-                        "rag_timeout": rag_timeout
+            if st.button(f"{Constants.Icons.DOWNLOAD} 전체 설정 저장", type="primary", key="save_all_settings"):
+                try:
+                    # Config.py 구조에 맞춘 설정 준비
+                    settings_data = {
+                        "ollama_host": ollama_host.strip(),
+                        "ollama_model": selected_model,
+                        "llm": {
+                            "model": selected_model,
+                            "auto_refresh": auto_refresh,
+                            "api_timeout": api_timeout,
+                            "rag_timeout": rag_timeout,
+                            "temperature": temperature,
+                            "max_tokens": max_tokens,
+                            "top_p": top_p,
+                            "frequency_penalty": frequency_penalty,
+                            "system_prompt": system_prompt
+                        },
+                        "rag": {
+                            "top_k": rag_top_k,
+                            "min_score": min_similarity,
+                            "context_window": context_window,
+                            "chunk_size": chunk_size,
+                            "chunk_overlap": chunk_overlap,
+                            "embed_model": embedding_model
+                        }
                     }
-                }
 
-                # 세션 상태에 각각 저장
-                for key, value in settings["llm"].items():
-                    st.session_state[key] = value
-                for key, value in settings["rag"].items():
-                    st.session_state[key] = value
-                for key, value in settings["api"].items():
-                    st.session_state[f"api_{key}"] = value
+                    # 설정 저장 시도
+                    with st.spinner("설정을 저장하는 중..."):
+                        st.info("서버에 설정을 저장하는 중...")
+                        resp = api_client.update_settings(settings_data)
 
-                # 통합 설정 저장
-                st.session_state.ai_settings = settings
-                SessionManager._hydrate_flat_keys_from_ai()  # ⭐ 추가
+                        if resp.get("status") == "ok":
+                            st.success("✅ 서버 설정이 저장되었습니다")
 
-                # -------------------------
-                # B단계 ─ 변경시 로컬 저장
-                # -------------------------
-                from frontend.ui.utils.local_settings import save_settings
-                bundle = {
-                    "ai_settings": st.session_state.get("ai_settings", {}),
-                    "advanced_settings": st.session_state.get("advanced_settings", {}),
-                    "user_preferences": st.session_state.get("user_preferences", {})
-                }
-                save_settings(bundle)
+                            # 로컬 세션 상태도 업데이트
+                            st.info("로컬 세션 상태를 업데이트하는 중...")
 
-                st.success(f"{Constants.Icons.STATUS_OK} 설정이 로컬에 저장되었습니다")
+                            # LLM 설정
+                            for key, value in settings_data["llm"].items():
+                                st.session_state[key] = value
+
+                            # RAG 설정
+                            rag_mapping = {
+                                "top_k": "rag_top_k",
+                                "min_score": "min_similarity",
+                                "context_window": "context_window",
+                                "chunk_size": "chunk_size",
+                                "chunk_overlap": "chunk_overlap",
+                                "embed_model": "embedding_model"
+                            }
+                            for rag_key, session_key in rag_mapping.items():
+                                st.session_state[session_key] = settings_data["rag"][rag_key]
+
+                            # 기본 설정
+                            st.session_state.ollama_host = settings_data["ollama_host"]
+                            st.session_state.selected_model = settings_data["ollama_model"]
+
+                            st.success("✅ 로컬 세션 상태도 업데이트되었습니다")
+
+                        elif resp.get("status") == "error":
+                            st.error(f"❌ 서버 설정 저장 실패: {resp.get('message', '알 수 없는 오류')}")
+                        else:
+                            st.warning(f"⚠️ 예상과 다른 응답: {resp}")
+
+                    # 최종 성공 메시지
+                    if resp.get("status") == "ok":
+                        st.balloons()
+                        st.success(f"{Constants.Icons.STATUS_OK} 모든 설정이 성공적으로 저장되었습니다!")
+                        st.info("💡 설정이 ./data/rag_settings.json 파일에 저장되었습니다")
+
+                except requests.exceptions.HTTPError as e:
+                    st.error(f"❌ HTTP 오류 발생: {e}")
+                    if hasattr(e, 'response') and e.response is not None:
+                        st.error(f"상태 코드: {e.response.status_code}")
+                        st.error(f"응답: {e.response.text}")
+
+                except requests.exceptions.ConnectionError:
+                    st.error("❌ 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요")
+                    st.error(f"연결 주소: {api_client.base_url}")
+
+                except requests.exceptions.Timeout:
+                    st.error("❌ 요청 시간이 초과되었습니다. 서버 응답이 느린 것 같습니다")
+
+                except Exception as e:
+                    st.error(f"❌ 예상치 못한 오류가 발생했습니다: {str(e)}")
+                    st.error("자세한 오류 정보는 로그를 확인하세요")
+
+                    # 디버그 정보 표시
+                    if st.checkbox("디버그 정보 표시", key="show_debug_info"):
+                        st.code(f"오류 타입: {type(e).__name__}")
+                        st.code(f"오류 내용: {str(e)}")
+                        import traceback
+
+                        st.code(traceback.format_exc())
 
         else:
-            st.button(f"{Constants.Icons.DOWNLOAD} AI 설정 저장", disabled=True,
-                     help="모델을 먼저 선택하세요", key="save_ai_settings_disabled")
+            st.button(f"{Constants.Icons.DOWNLOAD} 전체 설정 저장", disabled=True,
+                      help="모델을 먼저 선택하세요", key="save_all_settings_disabled")
 
     with col_reset:
-        if st.button(f"{Constants.Icons.REFRESH} 기본값 복원", key="reset_ai_settings"):
-            if st.session_state.get('confirm_reset_ai') != True:
-                st.session_state.confirm_reset_ai = True
+        if st.button(f"{Constants.Icons.REFRESH} 기본값 복원", key="reset_all_settings"):
+            if st.session_state.get('confirm_reset_all') != True:
+                st.session_state.confirm_reset_all = True
                 StatusIndicator.render_status("warning", "다시 클릭하면 모든 설정이 기본값으로 복원됩니다")
             else:
-                # 기본값으로 복원 - 상수 사용
+                # 기본값으로 복원
                 defaults = {
                     "temperature": Constants.Defaults.TEMPERATURE,
                     "max_tokens": Constants.Defaults.MAX_TOKENS,
@@ -540,7 +892,13 @@ with tab1:
                 for key, value in defaults.items():
                     st.session_state[key] = value
 
-                del st.session_state.confirm_reset_ai
+                # 백엔드 설정 캐시도 초기화
+                for key in list(st.session_state.keys()):
+                    if key.startswith('backend_'):
+                        del st.session_state[key]
+
+                del st.session_state.confirm_reset_all
+                st.session_state.settings_loaded = False  # 다시 로딩하도록
                 st.success(f"{Constants.Icons.STATUS_OK} 설정이 기본값으로 복원되었습니다")
                 st.rerun()
 
@@ -560,6 +918,11 @@ with tab1:
                             if 'error' not in test_result:
                                 st.success(f"{Constants.Icons.STATUS_OK} 모델 테스트 성공")
                                 st.info(f"사용된 모델: {selected_model}")
+
+                                # 테스트 응답 표시
+                                if 'answer' in test_result:
+                                    with st.expander("테스트 응답 보기"):
+                                        st.write(test_result['answer'])
                             else:
                                 ErrorDisplay.render_error_with_suggestions(
                                     f"모델 테스트 실패: {test_result.get('error')}",
@@ -569,7 +932,7 @@ with tab1:
                             ctx.add_error(e)
         else:
             st.button(f"{Constants.Icons.AI} 모델 테스트", disabled=True,
-                     help="모델을 먼저 선택하세요", key="test_model_disabled")
+                      help="모델을 먼저 선택하세요", key="test_model_disabled")
 
 # ===============================
 # 시스템 상태 탭 - 개선된 버전

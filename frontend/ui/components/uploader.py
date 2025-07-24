@@ -5,8 +5,10 @@
 - 설정 중앙화
 - 에러 처리 표준화
 """
+import logging
+
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 import requests
 
@@ -45,6 +47,9 @@ else:
     upload_manager = None
 
 
+logger = logging.getLogger(__name__)
+
+
 def render_file_uploader(api_client):
     """파일 업로더 렌더링 + 완료상태 처리 - 개선된 버전"""
     _init_upload_state()
@@ -55,7 +60,6 @@ def render_file_uploader(api_client):
         StatusIndicator.render_status(
             "success",
             "최근 업로드가 완료되었습니다",
-            "아래 '업로드된 문서'에서 확인하세요"
         )
 
         if st.button(f'{Constants.Icons.UPLOAD} 추가 파일 업로드',
@@ -148,7 +152,7 @@ def render_supported_formats_info():
 def render_upload_preview_and_process(uploaded_files, api_client, upload_mode):
     """업로드 전 미리보기 + 실행 - 개선된 버전"""
     _init_upload_state()
-    st.subheader(f'{Constants.Icons.DOCUMENT} 업로드 파일 미리보기')
+    st.subheader(f'{Constants.Icons.DOCUMENT} 업로드 요약')
 
     if not isinstance(uploaded_files, list):
         uploaded_files = list(uploaded_files)
@@ -175,9 +179,9 @@ def render_upload_preview_and_process(uploaded_files, api_client, upload_mode):
         file_info_list.append(file_info)
         total_size += getattr(f, 'size', 0)
 
-    # 파일 카드로 표시
-    for file_info in file_info_list:
-        FileDisplay.render_file_card(file_info)
+    with st.expander("📄 업로드 파일 상세 목록", expanded=False):
+        for file_info in file_info_list:  # 파일 목록은 필요할 때만 펼쳐서 본다
+            FileDisplay.render_file_card(file_info)
 
     # 총 크기 표시
     total_size_mb = total_size / 1024 / 1024 if total_size else 0
@@ -504,19 +508,27 @@ def filter_and_sort_files(files, search_filter, sort_option):
 
 
 def render_file_list_view(files, api_client):
-    """파일 목록을 리스트 형태로 표시 - 개선된 버전"""
+    """파일 목록을 리스트 형태로 표시 (업로드/생성/수정 시간 별도 열)"""
+    import streamlit as st
+    from frontend.ui.core.config import config, Constants
 
-    # 헤더
-    col_select, col_name, col_type, col_time, col_size, col_chunks, col_action = st.columns([0.5, 3, 1, 1.5, 1, 1, 1])
+    # ── Header ────────────────────────────────────────────────────────
+    col_select, col_name, col_type, col_uploaded, col_created, col_modified, col_size, col_chunks, col_action = st.columns(
+        [0.5, 3, 1, 1.3, 1.3, 1.3, 1, 1, 1]
+    )
 
     with col_select:
-        select_all = st.checkbox("전체선택", key="select_all_files", label_visibility="collapsed")
+        select_all = st.checkbox("전체선택", key="select_all_files", label_visibility="visible")
     with col_name:
         st.write("**파일명**")
     with col_type:
         st.write("**타입**")
-    with col_time:
-        st.write("**업로드 시간**")
+    with col_uploaded:
+        st.write("**업로드**")
+    with col_created:
+        st.write("**생성**")
+    with col_modified:
+        st.write("**수정**")
     with col_size:
         st.write("**크기**")
     with col_chunks:
@@ -526,76 +538,103 @@ def render_file_list_view(files, api_client):
 
     st.divider()
 
-    # 선택된 파일들 추적
-    selected_files = []
-
-    # 페이지네이션 처리
+    # ── Pagination helpers ────────────────────────────────────────────
     files_per_page = config.ui.default_page_size
     total_pages = (len(files) + files_per_page - 1) // files_per_page
-
-    if total_pages > 1:
-        page = st.number_input("페이지", min_value=1, max_value=total_pages, value=1) - 1
-    else:
-        page = 0
+    page = (
+        st.number_input("페이지", 1, total_pages if total_pages else 1, 1) - 1
+        if total_pages > 1
+        else 0
+    )
 
     start_idx = page * files_per_page
     end_idx = min(start_idx + files_per_page, len(files))
-    page_files = files[start_idx:end_idx]
 
-    # 파일 목록 표시
-    for idx, file in enumerate(page_files):
-        col_select, col_name, col_type, col_time, col_size, col_chunks, col_action = st.columns([0.5, 3, 1, 1.5, 1, 1, 1])
+    selected_files = []
 
+    for idx, file in enumerate(files[start_idx:end_idx]):
+        (
+            col_select,
+            col_name,
+            col_type,
+            col_uploaded,
+            col_created,
+            col_modified,
+            col_size,
+            col_chunks,
+            col_action,
+        ) = st.columns([0.5, 3, 1, 1.3, 1.3, 1.3, 1, 1, 1])
+
+        # 선택 체크박스
         with col_select:
-            is_selected = st.checkbox("전체선택", key=f"select_file_{start_idx + idx}", value=select_all)
+            import hashlib
+            import re
+            file_key = file.get("original_name") or file.get("name")
+
+            # 1️⃣ 깨끗한 basename
+            base = re.sub(r"[^0-9a-zA-Z_]", "_", file_key)  # 특수문자→_
+            base = re.sub(r"_+", "_", base).strip("_")[:40]  # 40자 제한
+            # 2️⃣ 충돌 방지를 위한 6-글자 MD5 해시
+            digest = hashlib.md5(file_key.encode()).hexdigest()[:6]
+            # 3️⃣ 페이지 내 인덱스까지 붙여 완전 고유화
+            checkbox_key = f"select_file_{base}_{digest}_{start_idx + idx}"
+
+            is_selected = st.checkbox(
+                "선택",
+                key=checkbox_key,
+                value=select_all,
+                label_visibility="collapsed",
+            )
+
             if is_selected:
                 selected_files.append(file)
 
+        # 파일명 + 아이콘
         with col_name:
-            # 파일 타입에 따른 아이콘
-            icon = get_file_type_icon(file.get('name', ''))
-            display_name = file.get('name', 'Unknown')
-
+            icon = get_file_type_icon(file.get("name", ""))
+            display_name = file.get("name", "Unknown")
             st.write(f"{icon} **{display_name}**")
 
-            # 원본명이 다르면 표시
-            original_name = file.get('original_name', '')
+            original_name = file.get("original_name", "")
             if original_name and original_name != display_name:
                 st.caption(f"원본: {original_name}")
 
-            # 압축 파일에서 추출된 경우 경로 표시
-            if file.get('type') == 'extracted' and file.get('archive_path'):
+            if file.get("type") == "extracted" and file.get("archive_path"):
                 st.caption(f"{Constants.Icons.FILE_ICONS['zip']} {file['archive_path']}")
 
+        # 타입
         with col_type:
-            file_type = file.get('type', 'document')
+            file_type = file.get("type", "document")
             type_display = {
-                'document': f'{Constants.Icons.DOCUMENT} 문서',
-                'extracted': f'{Constants.Icons.FILE_ICONS["zip"]} 추출',
-                'image': f'{Constants.Icons.FILE_ICONS["png"]} 이미지'
-            }.get(file_type, f'{Constants.Icons.FILE_ICONS["default"]} 파일')
+                "document": f"{Constants.Icons.DOCUMENT} 문서",
+                "extracted": f"{Constants.Icons.FILE_ICONS['zip']} 추출",
+                "image": f"{Constants.Icons.FILE_ICONS['png']} 이미지",
+            }.get(file_type, f"{Constants.Icons.FILE_ICONS['default']} 파일")
             st.write(type_display)
 
-        with col_time:
-            st.write(file.get('time', 'Unknown'))
+        # 개별 시간 컬럼
+        with col_uploaded:
+            st.write(file.get("uploaded", "-"))
+        with col_created:
+            st.write(file.get("created", "-"))
+        with col_modified:
+            st.write(file.get("modified", "-"))
 
+        # 크기
         with col_size:
-            st.write(file.get('size', 'Unknown'))
+            st.write(file.get("size", "-"))
 
+        # 청크
         with col_chunks:
-            chunks = file.get('chunks', 0)
-            if chunks > 0:
-                st.success(f"{chunks}")
-            else:
-                st.warning("0")
+            chunks = file.get("chunks", 0)
+            st.success(f"{chunks}") if chunks else st.warning("0")
 
+        # 액션 버튼
         with col_action:
-            if st.button(f"{Constants.Icons.DELETE}",
-                        key=f"delete_file_{start_idx + idx}",
-                        help="삭제"):
+            if st.button(Constants.Icons.DELETE, key=f"delete_file_{start_idx + idx}", help="삭제"):
                 delete_file_from_session_and_server(file, api_client)
 
-    # 페이지네이션 컨트롤
+    # 하단 페이지네이션 정보
     if total_pages > 1:
         st.caption(f"페이지 {page + 1} / {total_pages}")
 
@@ -603,6 +642,22 @@ def render_file_list_view(files, api_client):
     if selected_files:
         render_bulk_actions(selected_files, api_client)
 
+
+import streamlit as _st
+if "_narrow_row_css" not in _st.session_state:
+    _st.session_state["_narrow_row_css"] = True
+    _st.markdown(
+        """
+        <style>
+        div[data-testid="column"] > div {
+            margin-top: 0.15rem !important;
+            margin-bottom: 0.15rem !important;
+        }
+        label[data-testid="stCheckboxLabel"] { display: none; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def render_file_card_view(files, api_client):
     """파일 목록을 카드 형태로 표시"""
@@ -687,7 +742,7 @@ def delete_file_from_session_and_server(file, api_client):
 
             # 세션에서 제거
             st.session_state.uploaded_files.remove(file)
-
+            _reset_file_selection_state()
             StatusIndicator.render_status("success", f"'{file.get('name')}' 파일이 삭제되었습니다")
             rerun()
 
@@ -745,27 +800,88 @@ def delete_selected_files(selected_files, api_client):
             ["네트워크 연결을 확인하세요", "서버 상태를 확인하세요"]
         )
 
+    _reset_file_selection_state()
     rerun()
 
 
-def get_upload_summary() -> Dict:
-    """업로드 요약 정보 반환 - 개선된 버전"""
-    if 'uploaded_files' not in st.session_state:
+def get_upload_summary(api_client=None, sync_with_server: bool = True) -> Dict:
+    """
+    업로드 요약 정보 반환 - 서버 동기화 지원 버전
+
+    Args:
+        api_client: API 클라이언트 (서버 동기화용)
+        sync_with_server: 서버와 동기화 여부
+
+    Returns:
+        업로드 요약 정보
+    """
+    try:
+        # 서버와 동기화 옵션
+        if sync_with_server and api_client:
+            try:
+                # 서버 동기화 실행
+                sync_result = api_client.sync_local_with_server_documents()
+
+                if sync_result.get("status") == "success":
+                    # 동기화된 문서로 세션 상태 업데이트
+                    synced_docs = sync_result.get("synced_documents", [])
+                    if 'uploaded_files' not in st.session_state:
+                        st.session_state.uploaded_files = []
+
+                    st.session_state.uploaded_files = synced_docs
+
+                    logger.info(f"📊 서버 동기화 완료: {len(synced_docs)}개 문서")
+
+                    # 동기화된 데이터로 통계 계산
+                    total_chunks = sum(doc.get('chunks', 0) for doc in synced_docs)
+                    total_size = sum(_size_to_mb(doc.get('size', '0')) for doc in synced_docs)
+
+                    return {
+                        'total_files': len(synced_docs),
+                        'total_chunks': total_chunks,
+                        'total_size': total_size,
+                        'source': 'server_sync',
+                        'last_sync': sync_result.get('sync_time'),
+                        'server_total': sync_result.get('server_total', 0),
+                        'server_chunks': sync_result.get('server_chunks', 0)
+                    }
+                else:
+                    logger.warning(f"⚠️ 서버 동기화 실패: {sync_result.get('message', 'Unknown error')}")
+
+            except Exception as e:
+                logger.warning(f"⚠️ 서버 동기화 실패: {str(e)}, 로컬 데이터 사용")
+
+        # 로컬 세션 데이터 사용 (기존 로직)
+        if 'uploaded_files' not in st.session_state:
+            return {
+                'total_files': 0,
+                'total_chunks': 0,
+                'total_size': 0,
+                'source': 'local',
+                'last_sync': None
+            }
+
+        files = st.session_state.uploaded_files
+        total_chunks = sum(f.get('chunks', 0) for f in files)
+        total_size = sum(_size_to_mb(f.get('size', '0')) for f in files)
+
+        return {
+            'total_files': len(files),
+            'total_chunks': total_chunks,
+            'total_size': total_size,
+            'source': 'local',
+            'last_sync': datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ 업로드 요약 생성 오류: {str(e)}")
         return {
             'total_files': 0,
             'total_chunks': 0,
-            'total_size': 0
+            'total_size': 0,
+            'source': 'error',
+            'error': str(e)
         }
-
-    files = st.session_state.uploaded_files
-    total_chunks = sum(f.get('chunks', 0) for f in files)
-    total_size = sum(_size_to_mb(f.get('size', '0')) for f in files)
-
-    return {
-        'total_files': len(files),
-        'total_chunks': total_chunks,
-        'total_size': total_size
-    }
 
 
 def show_upload_stats(result: Dict):
@@ -866,12 +982,55 @@ def _file_time_key(f):
     return datetime.min
 
 
+def _reset_file_selection_state():
+    """행 삭제 후 남아있는 체크박스 상태를 모두 없앤다."""
+    for k in list(st.session_state.keys()):
+        if k.startswith("select_file_") or k == "select_all_files":
+            del st.session_state[k]
+
+
+def _fmt_timestamp(ts):
+    """Return local‑time formatted string for various timestamp encodings."""
+    if not ts:
+        return "-"
+    try:
+        if isinstance(ts, (int, float)):
+            # epoch milliseconds or seconds
+            ts = ts / 1000 if ts > 1e12 else ts
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+        else:
+            # ISO‑8601 string; allow trailing Z
+            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        return dt.astimezone().strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return str(ts)
+
+
 def _init_upload_state():
     """업로드 상태 초기화"""
     if 'upload_complete' not in st.session_state:
         st.session_state.upload_complete = False
     if 'uploading' not in st.session_state:
         st.session_state.uploading = False
+
+
+def _normalize_server_files(server_files: List[Dict[str, Any]]):
+    """Convert raw API data to front‑end friendly dictionaries.
+
+    Adds human‑readable time fields (uploaded/created/modified) that the list‑view
+    uses as separate columns. Keeps original keys intact so that older UI parts
+    depending on them continue to work.
+    """
+    normalized = []
+    for f in server_files:
+        item = dict(f)  # shallow copy
+        item["uploaded"] = _fmt_timestamp(f.get("uploaded_at") or f.get("uploaded"))
+        item["created"] = _fmt_timestamp(f.get("created_at") or f.get("created"))
+        item["modified"] = _fmt_timestamp(f.get("modified_at") or f.get("modified"))
+        # keep legacy multiline field for backward compatibility
+        item["time"] = "\n".join(filter(None, [item["uploaded"], item["created"], item["modified"]]))
+        normalized.append(item)
+    return normalized
 
 
 def _clear_uploader_widgets():

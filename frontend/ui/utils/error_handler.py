@@ -250,16 +250,22 @@ error_handler = ErrorHandler()
 
 
 # 편의 함수들
-def handle_api_error(error: Exception, context: str = None):
+def handle_api_error(error, context: str = None):
     """API 에러 처리"""
-    if "timeout" in str(error).lower():
+    # 문자열이 전달된 경우 Exception 객체로 변환
+    if isinstance(error, str):
+        error_msg = error
+    else:
+        error_msg = str(error)
+
+    if "timeout" in error_msg.lower():
         raise GTRagError(
             "API 요청 시간이 초과되었습니다",
             ErrorType.API_TIMEOUT,
             ErrorSeverity.MEDIUM,
             ["타임아웃 설정을 늘려보세요", "더 간단한 요청을 시도해보세요"]
         )
-    elif "connection" in str(error).lower():
+    elif "connection" in error_msg.lower():
         raise GTRagError(
             "API 서버에 연결할 수 없습니다",
             ErrorType.API_CONNECTION,
@@ -268,7 +274,7 @@ def handle_api_error(error: Exception, context: str = None):
         )
     else:
         raise GTRagError(
-            f"API 오류: {str(error)}",
+            f"API 오류: {error_msg}",
             ErrorType.API_RESPONSE,
             ErrorSeverity.MEDIUM,
             ["잠시 후 다시 시도해보세요"]

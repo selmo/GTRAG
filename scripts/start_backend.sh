@@ -424,7 +424,7 @@ echo "   로그 파일: logs/api.log"
 log_info "Celery 워커 시작..."
 
 # Celery 명령어 구성
-CELERY_CMD="celery -A backend.api.main.celery_app worker"
+CELERY_CMD="celery -A backend.core.tasks.celery_app worker"
 CELERY_ARGS="--loglevel=info --concurrency=2"
 
 # 백그라운드에서 실행

@@ -21,7 +21,15 @@ for path in [str(frontend_dir), str(project_root)]:
     if path not in sys.path:
         sys.path.insert(0, path)
 
-# 이제 import 가능
+# 페이지 설정 - 가장 먼저 호출되어야 함
+st.set_page_config(
+    page_title="GTOne RAG System",
+    page_icon="📚",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+
 try:
     from frontend.ui.utils.client_manager import ClientManager
     from frontend.ui.utils.session import SessionManager
@@ -45,14 +53,6 @@ except ImportError as e:
     for p in sys.path:
         st.write(f"  - {p}")
     st.stop()
-
-# 페이지 설정 - 가장 먼저 호출되어야 함
-st.set_page_config(
-    page_title="GTOne RAG System",
-    page_icon="📚",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 
 def render_loading_screen(health_report):
