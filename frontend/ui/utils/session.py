@@ -2,73 +2,121 @@
 세션 상태 관리 유틸리티
 Streamlit 세션 상태를 효율적으로 관리하기 위한 헬퍼 함수들
 """
+import logging
 import streamlit as st
 from typing import Any, Dict, List
 from datetime import datetime
 import json
 
 
+logger = logging.getLogger(__name__)
+
 class SessionManager:
     """Streamlit 세션 상태 관리자"""
-    
+
     @staticmethod
     def init_session_state():
-        """세션 상태 초기화"""
+        """세션 상태 초기화 - 타입 안전 처리 버전"""
         # 메시지 관련
         if 'messages' not in st.session_state:
             st.session_state.messages = []
-        
-        # 파일 업로드 관련
+
+        # 파일 업로드 관련 - 개선된 오류 처리
         if 'uploaded_files' not in st.session_state or not st.session_state.uploaded_files:
             try:
                 # 순환 의존성 방지를 위해 지연 import
                 from frontend.ui.utils.client_manager import ClientManager
-                docs = ClientManager.get_client().list_documents()  # 백엔드에서 최신 목록 수집
 
-                # 누락 필드 기본값 보강 (표시 오류 방지)
-                for d in docs:
-                    d.setdefault("time", "-")
-                    d.setdefault("size", "-")
-                    st.session_state.uploaded_files = docs
+                # API 호출 및 응답 검증
+                api_response = ClientManager.get_client().list_documents()
+                logging.info(f"API 응답 타입: {type(api_response)}")
+                logging.info(f"API 응답 내용: {api_response}")
+
+                # 🔧 API 응답 타입 검증 및 안전 처리
+                docs = []
+
+                if isinstance(api_response, dict):
+                    # 새로운 API 형식: {"documents": [...], "total_documents": N}
+                    if 'documents' in api_response:
+                        potential_docs = api_response['documents']
+                        if isinstance(potential_docs, list):
+                            docs = potential_docs
+                        else:
+                            st.warning(f"API 응답의 'documents' 필드가 리스트가 아님: {type(potential_docs)}")
+                            docs = []
+                    else:
+                        # 딕셔너리이지만 'documents' 키가 없는 경우
+                        st.warning(f"API 응답에 'documents' 키가 없음. 사용 가능한 키: {list(api_response.keys())}")
+                        docs = []
+
+                elif isinstance(api_response, list):
+                    # 레거시 API 형식: 직접 리스트 반환
+                    docs = api_response
+
+                else:
+                    # 예상하지 못한 타입
+                    st.warning(f"예상하지 못한 API 응답 타입: {type(api_response)}")
+                    docs = []
+
+                # 🔧 개별 문서 타입 검증 및 필드 보강
+                processed_docs = []
+                for i, d in enumerate(docs):
+                    try:
+                        if isinstance(d, dict):
+                            # 딕셔너리인 경우에만 setdefault 호출
+                            d.setdefault("time", "-")
+                            d.setdefault("size", "-")
+                            processed_docs.append(d)
+                        elif isinstance(d, str):
+                            # 문자열인 경우 기본 구조 생성
+                            st.warning(f"문서 {i}: 문자열 형태 데이터 발견, 기본 구조로 변환")
+                            processed_docs.append({
+                                "name": d,
+                                "time": "-",
+                                "size": "-",
+                                "chunks": 0,
+                                "type": "unknown"
+                            })
+                        else:
+                            # 기타 타입인 경우 경고 후 건너뜀
+                            st.warning(f"문서 {i}: 예상하지 못한 타입 ({type(d)}), 건너뜀")
+                            continue
+
+                    except Exception as doc_error:
+                        st.warning(f"문서 {i} 처리 중 오류: {doc_error}")
+                        continue
+
+                st.session_state.uploaded_files = processed_docs
+
+                if processed_docs:
+                    st.success(f"✅ 문서 목록 동기화 완료: {len(processed_docs)}개")
+                else:
+                    st.info("📋 현재 업로드된 문서가 없습니다")
+
             except Exception as e:
+                # 전체 동기화 실패 시 빈 리스트로 초기화
                 st.session_state.uploaded_files = []
-                st.warning(f"문서 목록 동기화 실패: {e}")
+                st.warning(f"⚠️ 문서 목록 동기화 실패: {e}")
+                st.info("💡 빈 목록으로 초기화되었습니다. 문서를 새로 업로드해보세요.")
 
         # 검색 관련
         if 'search_history' not in st.session_state:
             st.session_state.search_history = []
-        
+
         if 'search_query' not in st.session_state:
             st.session_state.search_query = ""
-
-        # # -------------------------
-        # # A단계 ─ 로컬 자동복구
-        # # -------------------------
-        # if 'local_settings_loaded' not in st.session_state:
-        #     local = load_settings()
-        #
-        #     if local:  # 로컬 파일이 있을 때만 덮어쓰기
-        #         st.session_state.ai_settings = local.get('ai_settings',
-        #                                                  SessionManager.get_default_ai_settings())
-        #         st.session_state.advanced_settings = local.get('advanced_settings',
-        #                                                        SessionManager.get_default_advanced_settings())
-        #         st.session_state.user_preferences = local.get('user_preferences',
-        #                                                       SessionManager.get_default_user_preferences())
-        #         SessionManager._hydrate_flat_keys_from_ai()  # ⭐ 추가
-        #
-        #     st.session_state.local_settings_loaded = True
 
         # 기본값(최초 실행 시)
         if 'ai_settings' not in st.session_state:
             st.session_state.ai_settings = SessionManager.get_default_ai_settings()
-        
+
         if 'advanced_settings' not in st.session_state:
             st.session_state.advanced_settings = SessionManager.get_default_advanced_settings()
-        
+
         # 시스템 상태
         if 'health_checked' not in st.session_state:
             st.session_state.health_checked = False
-        
+
         # 사용자 설정
         if 'user_preferences' not in st.session_state:
             st.session_state.user_preferences = SessionManager.get_default_user_preferences()

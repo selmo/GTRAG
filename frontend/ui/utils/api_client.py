@@ -1269,7 +1269,7 @@ class APIClient:
 
             if isinstance(size_value, str):
                 # "1.5 MB" 형태 파싱
-                import re
+                # 🔧 로컬 import 제거 (상단에서 이미 import됨)
                 match = re.search(r'([\d.]+)\s*(MB|KB|GB|B)?', str(size_value), re.IGNORECASE)
                 if match:
                     value = float(match.group(1))
