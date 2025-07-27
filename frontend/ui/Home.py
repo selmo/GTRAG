@@ -91,7 +91,7 @@ def render_loading_screen(health_report):
     # 로딩 헤더
     st.markdown("""
     <div class="loading-container">
-        <h1>🤖 GTOne RAG System</h1>
+        <h1>GTOne RAG System</h1>
         <h3>시스템 초기화 중...</h3>
         <div class="loading-spinner"></div>
         <p>AI 모델을 준비하고 있습니다. 잠시만 기다려주세요.</p>
@@ -176,7 +176,37 @@ def render_loading_screen(health_report):
 
 
 def render_main_app():
-    """메인 애플리케이션 렌더링 - 기존 코드 유지"""
+    """메인 애플리케이션 렌더링"""
+
+    # 헤더 스타일 정의
+    st.markdown("""
+    <style>
+    .main-title {
+        font-size: 2.2rem !important;
+        font-weight: bold;
+        color: #1f1f1f;
+        margin-bottom: 0.5rem;
+    }
+    .main-subtitle {
+        font-size: 1rem !important;
+        font-weight: bold;
+        color: #666;
+        margin-bottom: 0.5rem;
+    }
+    .section-header {
+        font-size: 1.8rem !important;
+        font-weight: bold;
+        color: #333;
+        margin: 0.5rem 0 1rem 0;
+    }
+    .subsection-header {
+        font-size: 1.2rem !important;
+        font-weight: bold;
+        color: #555;
+        margin: 0.5rem 0 0.5rem 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     # 세션 상태 초기화
     SessionManager.init_session_state()
@@ -188,8 +218,8 @@ def render_main_app():
     render_sidebar(api_client)
 
     # 메인 페이지 헤더
-    st.title("🏠 GTOne RAG System")
-    st.markdown("### 지능형 문서 기반 질의응답 시스템")
+    st.markdown('<h1 class="main-title">GTOne RAG System</h1>', unsafe_allow_html=True)
+    st.markdown('<div class="main-subtitle">지능형 문서 기반 질의응답 시스템</div>', unsafe_allow_html=True)
 
     # 시스템 개요
     st.markdown("""
@@ -200,7 +230,7 @@ def render_main_app():
     st.divider()
 
     # 대시보드
-    st.header("📊 Dashboard")
+    st.markdown('<h2 class="section-header">Dashboard</h2>', unsafe_allow_html=True)
 
     # 통계 카드
     col1, col2, col3, col4 = st.columns(4)
@@ -209,14 +239,14 @@ def render_main_app():
 
     with col1:
         st.metric(
-            "📄 총 문서 수",
+            "총 문서 수",
             upload_stats['total_files'],
             help="업로드된 총 문서 수"
         )
 
     with col2:
         st.metric(
-            "🧩 총 청크 수",
+            "총 청크 수",
             upload_stats['total_chunks'],
             help="인덱싱된 총 청크 수"
         )
@@ -225,7 +255,7 @@ def render_main_app():
         message_count = len(st.session_state.get('messages', []))
         user_messages = sum(1 for m in st.session_state.messages if m['role'] == 'user')
         st.metric(
-            "💬 대화 수",
+            "대화 수",
             message_count,
             f"+{user_messages} 질문",
             help="현재 세션의 대화 수"
@@ -235,7 +265,7 @@ def render_main_app():
         search_count = len(st.session_state.get('search_history', []))
         recent_searches = sum(1 for s in st.session_state.get('search_history', [])[-10:])
         st.metric(
-            "🔍 검색 수",
+            "검색 수",
             search_count,
             f"+{recent_searches} 최근",
             help="수행한 검색 수"
@@ -244,114 +274,115 @@ def render_main_app():
     st.divider()
 
     # 빠른 시작
-    st.header("🚀 Quick Start")
+    st.markdown('<h2 class="section-header">Quick Start</h2>', unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.subheader("1️⃣ 문서 업로드")
+        st.markdown('<h3 class="subsection-header">1️⃣ 문서 업로드</h3>', unsafe_allow_html=True)
         st.write("PDF, 이미지, 텍스트 문서를 업로드")
         if st.button("📤 문서 업로드 페이지로", use_container_width=True):
             st.switch_page("pages/10_Documents.py")
 
     with col2:
-        st.subheader("2️⃣ 검색하기")
+        st.markdown('<h3 class="subsection-header">2️⃣ 검색하기</h3>', unsafe_allow_html=True)
         st.write("키워드로 업로드된 문서 검색")
         if st.button("🔍 검색 페이지로", use_container_width=True):
             st.switch_page("pages/20_Search.py")
 
     with col3:
-        st.subheader("3️⃣ 질문하기")
+        st.markdown('<h3 class="subsection-header">3️⃣ 질문하기</h3>', unsafe_allow_html=True)
         st.write("AI와 대화하며 문서 내용을 탐색")
         if st.button("💬 채팅 시작하기", use_container_width=True):
             st.switch_page("pages/30_AI_Chat.py")
 
     st.divider()
 
-    # 채팅 인터페이스 (선택적 표시)
-    if st.session_state.get('show_chat', False):
-        st.header("💬 AI 어시스턴트")
+    # # 채팅 인터페이스 (선택적 표시)
+    # if st.session_state.get('show_chat', False):
+    #     st.header("💬 AI 어시스턴트")
+    #
+    #     # 모델 사용 가능 여부 확인 (새로운 시스템 상태 관리자 사용)
+    #     if SystemHealthManager is not None:
+    #         is_model_available, model_error = SystemHealthManager.check_model_availability(api_client)
+    #     else:
+    #         # Fallback: 기본 확인
+    #         try:
+    #             available_models = api_client.get_available_models()
+    #             selected_model = st.session_state.get('selected_model')
+    #             is_model_available = bool(available_models and selected_model and selected_model in available_models)
+    #             model_error = "모델이 선택되지 않았거나 사용할 수 없습니다." if not is_model_available else None
+    #         except Exception as e:
+    #             is_model_available = False
+    #             model_error = f"모델 상태 확인 실패: {str(e)}"
+    #
+    #     if not is_model_available:
+    #         st.error(f"🚫 {model_error}")
+    #         st.info("💡 설정 페이지에서 모델을 선택한 후 사용해주세요.")
+    #
+    #         col1, col2 = st.columns(2)
+    #         with col1:
+    #             if st.button("⚙️ 설정 페이지로 이동"):
+    #                 st.switch_page("pages/99_Settings.py")
+    #         with col2:
+    #             if st.button("채팅 숨기기"):
+    #                 st.session_state.show_chat = False
+    #                 rerun()
+    #     else:
+    #         # 채팅 컨테이너
+    #         chat_container = st.container()
+    #
+    #         with chat_container:
+    #             from frontend.ui.components.chat import ChatInterface
+    #             ChatInterface(api_client).render()
+    #
+    #         # 채팅 숨기기 버튼
+    #         if st.button("채팅 숨기기"):
+    #             st.session_state.show_chat = False
+    #             rerun()
+    #
+    # else:
+    #     # 채팅이 숨겨진 경우 예시 질문 표시
+    #     st.header("💡 예시 질문")
+    #
+    #     example_questions = [
+    #         "📋 계약서의 주요 조건은 무엇인가요?",
+    #         "📅 프로젝트 일정이 어떻게 되나요?",
+    #         "💰 예산 관련 내용을 요약해주세요.",
+    #         "📊 성과 지표에 대해 설명해주세요.",
+    #         "🔍 품질 기준은 무엇인가요?"
+    #     ]
+    #
+    #     cols = st.columns(3)
+    #     for idx, question in enumerate(example_questions):
+    #         with cols[idx % 3]:
+    #             if st.button(question, key=f"example_{idx}", use_container_width=True):
+    #                 # 모델 사용 가능 여부 확인 후 채팅 시작
+    #                 if SystemHealthManager is not None:
+    #                     is_available, error_msg = SystemHealthManager.check_model_availability(api_client)
+    #                 else:
+    #                     # Fallback 확인
+    #                     try:
+    #                         available_models = api_client.get_available_models()
+    #                         selected_model = st.session_state.get('selected_model')
+    #                         is_available = bool(available_models and selected_model and selected_model in available_models)
+    #                         error_msg = "모델이 설정되지 않았습니다." if not is_available else None
+    #                     except:
+    #                         is_available = False
+    #                         error_msg = "모델 상태 확인 실패"
+    #
+    #                 if is_available:
+    #                     st.session_state.show_chat = True
+    #                     SessionManager.add_message("user", question.split(" ", 1)[1])
+    #                     rerun()
+    #                 else:
+    #                     st.error(f"🚫 {error_msg}")
+    #                     st.info("💡 설정 페이지에서 모델을 선택한 후 사용해주세요.")
+    #
+    # # 최근 활동
+    # st.divider()
 
-        # 모델 사용 가능 여부 확인 (새로운 시스템 상태 관리자 사용)
-        if SystemHealthManager is not None:
-            is_model_available, model_error = SystemHealthManager.check_model_availability(api_client)
-        else:
-            # Fallback: 기본 확인
-            try:
-                available_models = api_client.get_available_models()
-                selected_model = st.session_state.get('selected_model')
-                is_model_available = bool(available_models and selected_model and selected_model in available_models)
-                model_error = "모델이 선택되지 않았거나 사용할 수 없습니다." if not is_model_available else None
-            except Exception as e:
-                is_model_available = False
-                model_error = f"모델 상태 확인 실패: {str(e)}"
-
-        if not is_model_available:
-            st.error(f"🚫 {model_error}")
-            st.info("💡 설정 페이지에서 모델을 선택한 후 사용해주세요.")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("⚙️ 설정 페이지로 이동"):
-                    st.switch_page("pages/99_Settings.py")
-            with col2:
-                if st.button("채팅 숨기기"):
-                    st.session_state.show_chat = False
-                    rerun()
-        else:
-            # 채팅 컨테이너
-            chat_container = st.container()
-
-            with chat_container:
-                from frontend.ui.components.chat import ChatInterface
-                ChatInterface(api_client).render()
-
-            # 채팅 숨기기 버튼
-            if st.button("채팅 숨기기"):
-                st.session_state.show_chat = False
-                rerun()
-
-    else:
-        # 채팅이 숨겨진 경우 예시 질문 표시
-        st.header("💡 예시 질문")
-
-        example_questions = [
-            "📋 계약서의 주요 조건은 무엇인가요?",
-            "📅 프로젝트 일정이 어떻게 되나요?",
-            "💰 예산 관련 내용을 요약해주세요.",
-            "📊 성과 지표에 대해 설명해주세요.",
-            "🔍 품질 기준은 무엇인가요?"
-        ]
-
-        cols = st.columns(3)
-        for idx, question in enumerate(example_questions):
-            with cols[idx % 3]:
-                if st.button(question, key=f"example_{idx}", use_container_width=True):
-                    # 모델 사용 가능 여부 확인 후 채팅 시작
-                    if SystemHealthManager is not None:
-                        is_available, error_msg = SystemHealthManager.check_model_availability(api_client)
-                    else:
-                        # Fallback 확인
-                        try:
-                            available_models = api_client.get_available_models()
-                            selected_model = st.session_state.get('selected_model')
-                            is_available = bool(available_models and selected_model and selected_model in available_models)
-                            error_msg = "모델이 설정되지 않았습니다." if not is_available else None
-                        except:
-                            is_available = False
-                            error_msg = "모델 상태 확인 실패"
-
-                    if is_available:
-                        st.session_state.show_chat = True
-                        SessionManager.add_message("user", question.split(" ", 1)[1])
-                        rerun()
-                    else:
-                        st.error(f"🚫 {error_msg}")
-                        st.info("💡 설정 페이지에서 모델을 선택한 후 사용해주세요.")
-
-    # 최근 활동
-    st.divider()
-    st.header("📜 최근 활동")
+    st.markdown('<h2 class="section-header">최근 활동</h2>', unsafe_allow_html=True)
 
     tab1, tab2, tab3 = st.tabs(["최근 업로드", "최근 검색", "최근 대화"])
 

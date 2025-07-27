@@ -45,7 +45,7 @@ class ChatInterface:
         # Chat history
         if not self.history._ensure_list():
             st.info(f"{Constants.Icons.AI} 질문을 입력하여 대화를 시작하세요.")
-            self._render_feature_highlights()
+            # self._render_feature_highlights()
         else:
             self.history.render()
 
@@ -87,9 +87,6 @@ class ChatInterface:
             if ok:
                 model_name = st.session_state.get("selected_model", "Unknown")
                 StatusIndicator.render_status("success", f"{model_name} 사용 준비 완료")
-
-                # 근거 표시 기능 상태 표시
-                st.caption("✨ 강화된 근거 표시 기능 활성화됨")
             else:
                 StatusIndicator.render_status("error", "모델 사용 불가", err)
 

@@ -385,7 +385,7 @@ def render_system_info():
     st.header(f"{Constants.Icons.STATUS_INFO} 정보")
 
     with st.expander("시스템 정보"):
-        st.write("**버전**: v1.0.0")
+        st.write("**버전**: v0.7")
         st.write("**임베딩**: E5-large")
         st.write("**벡터 DB**: Qdrant")
         st.write("**LLM**: Ollama")
@@ -404,11 +404,11 @@ def render_system_info():
             icon = Constants.Icons.FILE_ICONS.get(ext, Constants.Icons.FILE_ICONS['default'])
             st.caption(f"• {icon} {ext.upper()}")
 
-    with st.expander("단축키"):
-        st.write("**Ctrl/Cmd + Enter**: 메시지 전송")
-        st.write("**Ctrl/Cmd + K**: 검색 포커스")
-        st.write("**Ctrl/Cmd + L**: 대화 초기화")
-
+    # with st.expander("단축키"):
+    #     st.write("**Ctrl/Cmd + Enter**: 메시지 전송")
+    #     st.write("**Ctrl/Cmd + K**: 검색 포커스")
+    #     st.write("**Ctrl/Cmd + L**: 대화 초기화")
+    #
     with st.expander("유용한 링크"):
         st.markdown(f"[{Constants.Icons.DOCUMENT} API 문서]({Constants.URLs.DOCS})")
         st.markdown(f"[{Constants.Icons.STATUS_OK} Qdrant UI]({Constants.URLs.QDRANT_UI})")
