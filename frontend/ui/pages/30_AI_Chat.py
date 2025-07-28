@@ -7,12 +7,12 @@ import time  # 🔧 추가
 
 # 페이지 설정 - 인터랙티브 레퍼런스 시스템 소개
 st.set_page_config(
-    page_title="GTOne RAG Chat - Interactive References",
+    page_title="AI Chat - Interactive References",
     page_icon="🔗",
     layout="wide",
     menu_items={
         'About': """
-        # GTOne RAG Chat - Interactive References
+        # AI Chat - Interactive References
 
         ## 🚀 인터랙티브 레퍼런스 시스템
         - **스마트 레퍼런스**: AI 답변에 자동으로 참조 번호 삽입
@@ -92,19 +92,145 @@ try:
 
         st.stop()  # 설정이 없으면 페이지 중단
 
-except Exception as e:
-    logging.error(f"AI Chat 페이지 설정 초기화 실패: {e}")
-    st.error(f"⚠️ 페이지 초기화 중 오류가 발생했습니다: {e}")
+# AI Chat 페이지의 클라이언트 초기화 에러 처리 개선 부분
 
-    # 오류 복구 옵션
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔄 페이지 새로고침"):
-            SessionManager.clear_settings_cache()
-            st.rerun()
-    with col2:
-        if st.button("🏠 홈으로 돌아가기"):
-            st.switch_page("Home.py")
+except Exception as e:
+    client_error = str(e)
+    logging.error(f"❌ API 클라이언트 초기화 실패: {e}")
+
+    # 사용자 친화적 에러 메시지
+    st.error("❌ AI 서비스 연결에 실패했습니다.")
+
+    # 오류 유형별 맞춤 메시지
+    if "connection" in client_error.lower() or "연결" in client_error:
+        st.warning("🔌 서버 연결 문제가 발생했습니다.")
+        st.info("💡 Ollama 서버가 실행 중인지 확인해주세요.")
+    elif "timeout" in client_error.lower():
+        st.warning("⏱️ 서버 응답 시간이 초과되었습니다.")
+        st.info("💡 잠시 후 다시 시도하거나 관리자에게 문의해주세요.")
+    elif "permission" in client_error.lower() or "권한" in client_error:
+        st.warning("🔐 접근 권한 문제가 발생했습니다.")
+        st.info("💡 관리자에게 권한 설정을 문의해주세요.")
+    else:
+        st.warning("⚠️ 예상치 못한 오류가 발생했습니다.")
+        st.info("💡 아래의 해결 방법을 시도해보세요.")
+
+    # 상세 오류 정보 (선택적 표시)
+    with st.expander("🔧 기술적 오류 정보", expanded=False):
+        st.code(f"오류 유형: {type(e).__name__}")
+        st.code(f"오류 메시지: {client_error}")
+
+        # 클라이언트 상태 진단
+        st.write("**클라이언트 상태 진단:**")
+        st.write(f"- api_client: {type(api_client)}")
+        st.write(f"- 세션 캐시: {type(st.session_state.get('api_client_cached'))}")
+
+        client_info = ClientManager.get_client_info()
+        st.write("**ClientManager 정보:**")
+        for key, value in client_info.items():
+            st.write(f"- {key}: {value}")
+
+    # 단계별 문제 해결 가이드
+    st.subheader("🛠️ 단계별 문제 해결")
+
+    with st.expander("1단계: 기본 확인사항", expanded=True):
+        st.markdown("""
+        **먼저 확인해주세요:**
+        - 인터넷 연결 상태가 정상인가요?
+        - 다른 브라우저 탭에서도 같은 문제가 발생하나요?
+        - 최근에 설정을 변경하셨나요?
+        """)
+
+        col_check1, col_check2 = st.columns(2)
+        with col_check1:
+            if st.button("🔄 페이지 새로고침", type="primary", key="refresh_page"):
+                st.rerun()
+        with col_check2:
+            if st.button("🏠 홈으로 이동", key="go_home"):
+                st.switch_page("Home.py")
+
+    with st.expander("2단계: 서비스 재시작", expanded=False):
+        st.markdown("""
+        **서비스 재시작을 시도해보세요:**
+        - 클라이언트 연결을 초기화합니다
+        - 캐시된 설정을 새로고침합니다
+        - 서버와의 연결을 재설정합니다
+        """)
+
+        col_restart1, col_restart2 = st.columns(2)
+        with col_restart1:
+            if st.button("🔄 클라이언트 재시작", key="restart_client"):
+                with st.spinner("클라이언트 재시작 중..."):
+                    ClientManager.reset_client()
+                    if 'api_client_cached' in st.session_state:
+                        del st.session_state['api_client_cached']
+                    SessionManager.clear_settings_cache()
+                    time.sleep(1)
+                st.success("✅ 클라이언트 재시작 완료")
+                st.info("🔄 페이지를 새로고침하여 다시 시도해주세요.")
+
+        with col_restart2:
+            if st.button("⚙️ 설정 초기화", key="reset_settings"):
+                with st.spinner("설정 초기화 중..."):
+                    SessionManager.clear_settings_cache()
+                    # 기본 설정으로 재설정
+                    st.session_state.ai_settings = SessionManager.get_default_ai_settings()
+                    time.sleep(1)
+                st.success("✅ 설정 초기화 완료")
+                st.info("⚙️ 설정 페이지에서 다시 구성해주세요.")
+
+    with st.expander("3단계: 고급 해결책", expanded=False):
+        st.markdown("""
+        **고급 문제 해결:**
+        - 서버 상태를 확인합니다
+        - 시스템 설정을 점검합니다
+        - 관리자 도구를 사용합니다
+        """)
+
+        col_advanced1, col_advanced2, col_advanced3 = st.columns(3)
+
+        with col_advanced1:
+            if st.button("🔧 서버 상태 확인", key="check_server"):
+                st.switch_page("pages/99_Settings.py")
+
+        with col_advanced2:
+            if st.button("📊 시스템 진단", key="system_diagnosis"):
+                st.info("시스템 진단 기능은 설정 페이지에서 이용할 수 있습니다.")
+
+        with col_advanced3:
+            if st.button("📞 관리자 문의", key="contact_admin"):
+                st.info("""
+                **관리자 문의 시 포함할 정보:**
+                - 오류가 발생한 시간
+                - 위의 기술적 오류 정보
+                - 시도해본 해결 방법
+                """)
+
+    # 임시 해결책 제안
+    st.divider()
+    st.subheader("🚀 임시 해결책")
+
+    col_temp1, col_temp2 = st.columns(2)
+
+    with col_temp1:
+        st.markdown("""
+        **📄 문서 검색만 사용하기**
+
+        AI 채팅 기능에 문제가 있어도 문서 검색은 사용할 수 있습니다.
+        """)
+        if st.button("🔍 문서 검색으로 이동", key="go_search"):
+            st.switch_page("pages/03_Search.py")
+
+    with col_temp2:
+        st.markdown("""
+        **⚙️ 설정 확인하기**
+
+        서버 설정과 연결 상태를 확인하여 문제를 해결해보세요.
+        """)
+        if st.button("⚙️ 설정 페이지로 이동", key="go_settings_final"):
+            st.switch_page("pages/99_Settings.py")
+
+    st.stop()  # 클라이언트 없이는 진행 불가
 
 # 사이드바에 기능 안내
 with st.sidebar:

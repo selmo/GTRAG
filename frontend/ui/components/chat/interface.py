@@ -37,16 +37,19 @@ class ChatInterface:
     # Public API
     # --------------------------------------------------------------
     def render(self):
-        st.title(f"{Constants.Icons.AI} GTOne RAG Chat")
+        st.title(f"AI Chat")
 
         self._render_header()
         self._render_enhanced_action_row()
 
         # Chat history
-        if not self.history._ensure_list():
-            st.info(f"{Constants.Icons.AI} 질문을 입력하여 대화를 시작하세요.")
-            # self._render_feature_highlights()
-        else:
+        # if not self.history._ensure_list():
+        #     st.info(f"{Constants.Icons.AI} 질문을 입력하여 대화를 시작하세요.")
+        #     # self._render_feature_highlights()
+        # else:
+        #     self.history.render()
+
+        if self.history._ensure_list():
             self.history.render()
 
         # Input widget

@@ -1,19 +1,86 @@
 """
-고급 인터랙티브 레퍼런스 시스템 - 최종 완성 버전
-- CSS 전용 호버 미리보기 (JavaScript 불필요)
-- 스마트 레퍼런스 삽입
-- 탭 기반 소스 카드 렌더링
-- Streamlit 완전 호환
+고급 인터랙티브 레퍼런스 시스템 - 최적 개선 버전
+- 전역 설정 연동 시스템
+- 중복 슬라이더 제거
+- 실시간 필터링 구현
+- 설정값 자동 동기화
 """
 import re
 import json
+import time
+import uuid
 from typing import Dict, List, Tuple, Optional
 import streamlit as st
 from datetime import datetime
 
+# 설정 관리자 클래스
+class SettingsManager:
+    """전역 설정 관리자"""
+
+    @staticmethod
+    def get_rag_settings() -> Dict:
+        """RAG 설정 가져오기 (우선순위: 세션 > 백엔드 > 기본값)"""
+        from frontend.ui.core.config import Constants
+
+        # 백엔드 설정 시도
+        backend_settings = {}
+        try:
+            if hasattr(st.session_state, 'api_client') and st.session_state.api_client:
+                backend_settings = st.session_state.api_client.get_settings().get('rag', {})
+        except:
+            pass
+
+        return {
+            'min_similarity': (
+                st.session_state.get('min_similarity') or
+                st.session_state.get('backend_min_similarity') or
+                backend_settings.get('min_score') or
+                Constants.Defaults.MIN_SIMILARITY
+            ),
+            'top_k': (
+                st.session_state.get('rag_top_k') or
+                st.session_state.get('backend_rag_top_k') or
+                backend_settings.get('top_k') or
+                Constants.Defaults.TOP_K
+            ),
+            'context_window': (
+                st.session_state.get('context_window') or
+                st.session_state.get('backend_context_window') or
+                backend_settings.get('context_window') or
+                Constants.Defaults.CONTEXT_WINDOW
+            )
+        }
+
+    @staticmethod
+    def sync_settings_from_backend():
+        """백엔드에서 설정 동기화"""
+        try:
+            if hasattr(st.session_state, 'api_client') and st.session_state.api_client:
+                current_settings = st.session_state.api_client.get_settings()
+
+                if current_settings and 'rag' in current_settings:
+                    rag_settings = current_settings['rag']
+
+                    # 백엔드 설정을 세션에 반영 (덮어쓰지 않고 backup으로 저장)
+                    param_mapping = {
+                        'min_score': 'backend_min_similarity',
+                        'top_k': 'backend_rag_top_k',
+                        'context_window': 'backend_context_window'
+                    }
+
+                    for backend_key, session_key in param_mapping.items():
+                        if backend_key in rag_settings:
+                            st.session_state[session_key] = rag_settings[backend_key]
+
+                    return True
+        except Exception as e:
+            st.warning(f"백엔드 설정 동기화 실패: {str(e)}")
+
+        return False
+
 
 class InteractiveReferenceSystem:
-    """인터랙티브 레퍼런스 시스템 메인 클래스"""
+    """인터랙티브 레퍼런스 시스템 메인 클래스 - 설정 연동 최적화"""
 
     def __init__(self):
         self.reference_patterns = [
@@ -23,6 +90,260 @@ class InteractiveReferenceSystem:
             r'(설명|언급|기술|서술|명시)된?(바와 같이|대로)',
             r'(참고|참조|확인)하면',
         ]
+
+        # 🔧 키 관리자 초기화
+        self._init_key_manager()
+
+        # 🔧 설정 동기화 초기화
+        self._init_settings_sync()
+
+    def _init_key_manager(self):
+        """키 관리자 초기화"""
+        # 세션별 고유 ID 생성
+        if 'ref_system_session_id' not in st.session_state:
+            st.session_state.ref_system_session_id = str(uuid.uuid4())[:8]
+
+        # 키 카운터 초기화
+        if 'ref_system_key_counter' not in st.session_state:
+            st.session_state.ref_system_key_counter = {}
+
+        self.session_id = st.session_state.ref_system_session_id
+        self.key_counter = st.session_state.ref_system_key_counter
+
+    def _init_settings_sync(self):
+        """설정 동기화 초기화"""
+        # 페이지 로드시 한 번만 동기화
+        if 'ref_system_settings_synced' not in st.session_state:
+            SettingsManager.sync_settings_from_backend()
+            st.session_state.ref_system_settings_synced = True
+
+    def _generate_unique_key(self, base_key: str, context: str = "") -> str:
+        """고유 키 생성 (중복 방지 보장)"""
+        # 컨텍스트가 있으면 포함
+        if context:
+            full_base = f"{base_key}_{context}"
+        else:
+            full_base = base_key
+
+        # 카운터 증가
+        if full_base not in self.key_counter:
+            self.key_counter[full_base] = 0
+        self.key_counter[full_base] += 1
+
+        # 타임스탬프와 세션 ID 포함한 완전 고유 키
+        timestamp = int(time.time() * 1000000) % 1000000  # 마이크로초 단위
+        unique_key = f"{full_base}_{self.session_id}_{self.key_counter[full_base]}_{timestamp}"
+
+        return unique_key
+
+    def filter_sources_by_settings(self, sources: List[Dict]) -> List[Dict]:
+        """설정에 따른 소스 필터링 (실시간 적용)"""
+        if not sources:
+            return sources
+
+        # 현재 설정 가져오기
+        rag_settings = SettingsManager.get_rag_settings()
+        min_similarity = rag_settings['min_similarity']
+        top_k = rag_settings['top_k']
+
+        # 유사도 필터링
+        filtered_sources = []
+        for source in sources:
+            score = source.get('score', 0)
+            confidence = source.get('confidence', score)
+
+            # 유사도 임계값 적용
+            if score >= min_similarity or confidence >= min_similarity:
+                filtered_sources.append(source)
+
+        # top_k 제한 적용
+        filtered_sources = filtered_sources[:top_k]
+
+        return filtered_sources
+
+    def render_settings_control_panel(self, sources: List[Dict]) -> List[Dict]:
+        """설정 제어 패널 (Settings 연동) - expander 중첩 방지"""
+        # # 🎯 expander 중첩 검사
+        # is_nested = self._check_if_nested_context()
+        #
+        # if is_nested:
+        #     # 중첩된 경우 간단한 컨테이너 사용
+        #     self._render_simple_control_panel(sources)
+        # else:
+        #     # 독립적인 경우 full expander 사용
+        #     self._render_full_control_panel(sources)
+
+        # 실시간 필터링 적용
+        return self._apply_realtime_filtering(sources)
+
+    def _check_if_nested_context(self) -> bool:
+        """현재 expander 내부 또는 사이드바 내부인지 확인"""
+        # 🔧 사이드바 컨텍스트 체크
+        if self._is_in_sidebar():
+            return True  # 사이드바에서는 간단한 버전 사용
+
+        # 🔧 expander 중첩 체크 (안전하게 간단한 버전 사용)
+        return True  # 안전을 위해 항상 간단한 버전 사용
+
+    def _is_in_sidebar(self) -> bool:
+        """현재 사이드바 컨텍스트인지 확인"""
+        try:
+            # Streamlit의 내부 컨텍스트 확인
+            # 사이드바에서 실행 중인지 간접적으로 체크
+            import streamlit as st
+
+            # 컨텍스트 매니저 스택 확인
+            if hasattr(st, '_get_script_run_ctx'):
+                ctx = st._get_script_run_ctx()
+                if ctx and hasattr(ctx, 'widgets_manager'):
+                    # 현재 활성 컨테이너가 사이드바인지 확인하는 간접적 방법
+                    # 안전하게 False 반환 (추후 더 정확한 방법으로 개선 가능)
+                    pass
+
+            # 간단한 플래그 기반 체크
+            return st.session_state.get('_in_sidebar_context', False)
+        except:
+            return False
+
+    def _render_simple_control_panel(self, sources: List[Dict]):
+        """간단한 제어 패널 (expander 없이)"""
+        # 구분선과 헤더
+        st.markdown("---")
+        st.markdown("#### 🔧 근거 필터링 설정 1")
+        st.caption("💡 **Settings 페이지**에서 기본값을 설정할 수 있습니다")
+
+        # 현재 설정 가져오기
+        rag_settings = SettingsManager.get_rag_settings()
+
+        col1, col2, col3 = st.columns([2, 1, 1])
+
+        with col1:
+            # 🔧 실시간 최소 유사도 슬라이더 (세션 임시값)
+            current_min_sim = st.session_state.get('temp_min_similarity', rag_settings['min_similarity'])
+
+            temp_min_similarity = st.slider(
+                "최소 유사도 (임시 조정)",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(current_min_sim),
+                step=0.05,
+                help="이 값은 현재 세션에만 적용됩니다. 영구 설정은 Settings 페이지에서 하세요",
+                key=self._generate_unique_key("temp_min_similarity", "simple_panel")
+            )
+
+            # 세션 임시값 저장
+            st.session_state.temp_min_similarity = temp_min_similarity
+
+        with col2:
+            # 설정 정보 표시
+            st.caption("**현재 설정값**")
+            st.caption(f"기본값: {rag_settings['min_similarity']:.2f}")
+            st.caption(f"임시값: {temp_min_similarity:.2f}")
+            st.caption(f"Top-K: {rag_settings['top_k']}")
+
+        with col3:
+            # 설정 액션 버튼
+            if st.button("🔄 기본값 복원", key=self._generate_unique_key("reset_temp", "simple"), help="임시 조정값을 초기화합니다"):
+                if 'temp_min_similarity' in st.session_state:
+                    del st.session_state.temp_min_similarity
+                st.rerun()
+
+            if st.button("⚙️ Settings", key=self._generate_unique_key("open_settings", "simple"), help="Settings 페이지로 이동합니다"):
+                st.switch_page("pages/99_Settings.py")
+
+        # 현재 사용할 최소 유사도 (임시값 우선)
+        effective_min_similarity = st.session_state.get('temp_min_similarity', rag_settings['min_similarity'])
+
+        # 필터링된 소스 개수 표시
+        if sources:
+            original_count = len(sources)
+            filtered_count = len([s for s in sources if s.get('score', 0) >= effective_min_similarity])
+
+            if filtered_count != original_count:
+                st.info(f"📊 {original_count}개 중 {filtered_count}개 근거가 표시됩니다 (임계값: {effective_min_similarity:.2f})")
+            else:
+                st.success(f"✅ 모든 {original_count}개 근거가 표시됩니다")
+
+    def _render_full_control_panel(self, sources: List[Dict]):
+        """전체 제어 패널 (expander 포함)"""
+        # 🎯 Settings 페이지와 연동된 제어 패널
+        with st.expander("🔧 근거 필터링 설정 2", expanded=False):
+            st.info("💡 **Settings 페이지**에서 기본값을 설정할 수 있습니다")
+
+            # 현재 설정 가져오기
+            rag_settings = SettingsManager.get_rag_settings()
+
+            col1, col2, col3 = st.columns([2, 1, 1])
+
+            with col1:
+                # 🔧 실시간 최소 유사도 슬라이더 (세션 임시값)
+                current_min_sim = st.session_state.get('temp_min_similarity', rag_settings['min_similarity'])
+
+                temp_min_similarity = st.slider(
+                    "최소 유사도 (임시 조정)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=float(current_min_sim),
+                    step=0.05,
+                    help="이 값은 현재 세션에만 적용됩니다. 영구 설정은 Settings 페이지에서 하세요",
+                    key=self._generate_unique_key("temp_min_similarity", "full_panel")
+                )
+
+                # 세션 임시값 저장
+                st.session_state.temp_min_similarity = temp_min_similarity
+
+            with col2:
+                # 설정 정보 표시
+                st.caption("**현재 설정값**")
+                st.caption(f"기본값: {rag_settings['min_similarity']:.2f}")
+                st.caption(f"임시값: {temp_min_similarity:.2f}")
+                st.caption(f"Top-K: {rag_settings['top_k']}")
+
+            with col3:
+                # 설정 액션 버튼
+                if st.button("🔄 기본값 복원", key=self._generate_unique_key("reset_temp", "full")):
+                    if 'temp_min_similarity' in st.session_state:
+                        del st.session_state.temp_min_similarity
+                    st.rerun()
+
+                if st.button("⚙️ Settings 열기", key=self._generate_unique_key("open_settings", "full")):
+                    st.switch_page("pages/99_Settings.py")
+
+            # 현재 사용할 최소 유사도 (임시값 우선)
+            effective_min_similarity = st.session_state.get('temp_min_similarity', rag_settings['min_similarity'])
+
+            # 필터링된 소스 개수 표시
+            if sources:
+                original_count = len(sources)
+                filtered_count = len([s for s in sources if s.get('score', 0) >= effective_min_similarity])
+
+                if filtered_count != original_count:
+                    st.info(f"📊 {original_count}개 중 {filtered_count}개 근거가 표시됩니다 (임계값: {effective_min_similarity:.2f})")
+                else:
+                    st.success(f"✅ 모든 {original_count}개 근거가 표시됩니다")
+
+    def _apply_realtime_filtering(self, sources: List[Dict]) -> List[Dict]:
+        """실시간 필터링 적용"""
+        if not sources:
+            return sources
+
+        # 임시 설정값 우선 사용
+        rag_settings = SettingsManager.get_rag_settings()
+        effective_min_similarity = st.session_state.get('temp_min_similarity', rag_settings['min_similarity'])
+        top_k = rag_settings['top_k']
+
+        # 필터링 적용
+        filtered_sources = []
+        for source in sources:
+            score = source.get('score', 0)
+            confidence = source.get('confidence', score)
+
+            # 유사도 임계값 적용
+            if max(score, confidence) >= effective_min_similarity:
+                filtered_sources.append(source)
+
+        # Top-K 제한
+        return filtered_sources[:top_k]
 
     def insert_smart_references(self, answer: str, sources: List[Dict]) -> str:
         """문맥에 맞는 스마트 레퍼런스 삽입"""
@@ -112,7 +433,7 @@ class InteractiveReferenceSystem:
     def render_interactive_answer(self, answer: str, sources: List[Dict], message_id: str = None, placeholder=None):
         """CSS 전용 호버 미리보기 - Streamlit 호환 버전"""
         if not message_id:
-            message_id = f"msg_{datetime.now().timestamp()}"
+            message_id = self._generate_unique_key("msg", "answer")
 
         # 스마트 레퍼런스 삽입
         referenced_answer = self.insert_smart_references(answer, sources)
@@ -274,38 +595,84 @@ class InteractiveReferenceSystem:
         return tooltip
 
     def render_enhanced_sources(self, sources: List[Dict], search_info: Optional[Dict] = None):
-        """향상된 근거 표시 (탭 기반, expander 중첩 문제 해결)"""
+        """향상된 근거 표시 - 설정 연동 버전 (사이드바 컨텍스트 방지)"""
         if not sources:
+            st.info("표시할 근거가 없습니다.")
+            return
+
+        # 🚨 사이드바에서 호출된 경우 기본 렌더링만 수행
+        if self._is_in_sidebar():
+            self._render_sidebar_safe_sources(sources, search_info)
+            return
+
+        # 🎯 메인 컨텐츠 영역에서만 설정 제어 패널 렌더링
+        filtered_sources = self.render_settings_control_panel(sources)
+
+        # 필터링 결과가 없는 경우
+        if not filtered_sources:
+            st.warning("설정된 임계값에 맞는 근거가 없습니다. 임계값을 낮춰보세요.")
             return
 
         # 검색 정보 표시
         if search_info:
-            self._render_search_summary(search_info)
+            self._render_search_summary(search_info, len(sources), len(filtered_sources))
+
+        # 소스 카드들 렌더링 (필터링된 소스만)
+        self._render_source_cards(filtered_sources)
+
+    def _render_sidebar_safe_sources(self, sources: List[Dict], search_info: Optional[Dict] = None):
+        """사이드바 안전 버전 - 설정 제어 패널 없이 기본 렌더링만"""
+        # 🔧 Settings에서 설정값 가져와서 필터링만 적용
+        filtered_sources = self._apply_realtime_filtering(sources)
+
+        if not filtered_sources:
+            st.info("필터 조건에 맞는 근거가 없습니다.")
+            return
+
+        # 검색 정보 (간단 버전)
+        if search_info:
+            st.caption(f"🔍 검색 시간: {search_info.get('search_time', 0):.2f}초")
+            if len(filtered_sources) != len(sources):
+                st.caption(f"📊 {len(sources)}개 중 {len(filtered_sources)}개 표시")
 
         # 소스 카드들 렌더링
-        self._render_source_cards(sources)
+        self._render_source_cards(filtered_sources)
 
     def render_enhanced_sources_no_search_info(self, sources: List[Dict]):
-        """검색 정보 없이 소스만 렌더링 (expander 중첩 방지)"""
+        """검색 정보 없이 소스만 렌더링 - 설정 연동 버전 (사이드바 컨텍스트 방지)"""
         if not sources:
             return
 
+        # 🚨 사이드바에서 호출된 경우 기본 렌더링만 수행
+        if self._is_in_sidebar():
+            filtered_sources = self._apply_realtime_filtering(sources)
+            if filtered_sources:
+                self._render_source_cards(filtered_sources)
+            return
+
+        # 🎯 설정 제어 패널과 필터링 적용
+        filtered_sources = self.render_settings_control_panel(sources)
+
+        if not filtered_sources:
+            st.warning("설정된 임계값에 맞는 근거가 없습니다.")
+            return
+
         # 소스 카드들만 렌더링
-        self._render_source_cards(sources)
+        self._render_source_cards(filtered_sources)
 
     def _render_source_cards(self, sources: List[Dict]):
-        """소스 카드들 렌더링 (공통 로직 분리)"""
+        """소스 카드들 렌더링 (공통 로직 분리) - 키 관리 최적화"""
         # 고유 ID를 가진 소스 카드들 렌더링
         for idx, source in enumerate(sources, 1):
-            # 고유 ID 부여
-            source_id = f"ref-{idx}"
+            # 🔧 고유 ID 부여 (키 관리자 사용)
+            source_id = self._generate_unique_key("source_card", f"ref_{idx}")
 
             with st.container():
                 # HTML anchor 추가
-                st.markdown(f'<div id="{source_id}" class="source-card">', unsafe_allow_html=True)
+                st.markdown(f'<div id="ref-{idx}" class="source-card">', unsafe_allow_html=True)
 
-                # 향상된 소스 카드 렌더링
-                self._render_enhanced_source_card(source, idx)
+                # 향상된 소스 카드 렌더링 (키 컨텍스트 전달)
+                self._render_enhanced_source_card(source, idx, context=f"card_{idx}")
 
                 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -313,28 +680,26 @@ class InteractiveReferenceSystem:
                 if idx < len(sources):
                     st.divider()
 
-    def _render_enhanced_source_card(self, source: Dict, ref_num: int):
-        """개선된 소스 카드 렌더링 - 탭 사용, 메타데이터 분리"""
+    def _render_enhanced_source_card(self, source: Dict, ref_num: int, context: str = ""):
+        """개선된 소스 카드 렌더링 - 고유 키 보장"""
         score = source.get("score", 0)
         confidence = source.get("confidence", 0)
         name = source.get("source", "Unknown")
         content = source.get("content", "")
 
+        # 🔧 키 컨텍스트 설정
+        key_context = f"{context}_ref{ref_num}" if context else f"ref{ref_num}"
+
         # 🔧 간소화된 헤더 섹션 (참조 번호와 문서명만)
-        col1, col2 = st.columns([0.1, 0.9])
+        st.markdown(f"##### [{ref_num}] \"{name}\"")
 
-        with col1:
-            st.markdown(f"### [{ref_num}]")
-
-        with col2:
-            st.markdown(f"**{name}**")
-
-        # 🚀 탭을 사용한 내용 표시
+        # 🚀 탭을 사용한 내용 표시 - 고유 키 적용
         preview_length = 150
         if len(content) > preview_length:
             preview = content[:preview_length] + "..."
 
-            # 탭 생성
+            # 🔧 탭 생성 (고유 키 사용)
+            tab_key = self._generate_unique_key("tabs", key_context)
             tab1, tab2 = st.tabs(["📄 요약", "📖 전체 내용"])
 
             with tab1:
@@ -380,18 +745,20 @@ class InteractiveReferenceSystem:
                     if meta_items:
                         st.divider()
 
-                # 전체 내용
+                # 🔧 전체 내용 - 고유 키 적용
+                content_key = self._generate_unique_key("content_full", key_context)
                 st.markdown("**📄 전체 내용**")
                 st.text_area(
                     "전체 내용",
                     content,
                     height=200,
-                    key=f"content_full_{ref_num}",
+                    key=content_key,  # 고유 키 사용
                     disabled=True,
                     label_visibility="collapsed"
                 )
         else:
-            # 내용이 짧은 경우 - 단일 탭으로 표시
+            # 내용이 짧은 경우 - 단일 탭으로 표시 (고유 키 적용)
+            short_tab_key = self._generate_unique_key("short_tabs", key_context)
             tab1, tab2 = st.tabs(["📄 내용", "📊 상세 정보"])
 
             with tab1:
@@ -421,8 +788,8 @@ class InteractiveReferenceSystem:
                         if value:
                             st.caption(f"**{key}:** {value}")
 
-    def _render_search_summary(self, search_info: Dict) -> None:
-        """검색 요약 정보 표시 - expander 중첩 문제 해결"""
+    def _render_search_summary(self, search_info: Dict, original_count: int, filtered_count: int) -> None:
+        """검색 요약 정보 표시 - 필터링 정보 포함"""
         if not search_info:
             return
 
@@ -438,12 +805,94 @@ class InteractiveReferenceSystem:
             st.metric("검색 방식", search_info.get('search_type', 'hybrid'))
 
         with cols[2]:
-            st.metric("총 후보", f"{search_info.get('total_candidates', 0)}개")
+            st.metric("발견된 근거", f"{original_count}개")
 
         with cols[3]:
-            st.metric("필터링됨", f"{search_info.get('filtered_count', 0)}개")
+            if filtered_count != original_count:
+                st.metric("표시된 근거", f"{filtered_count}개", delta=f"{filtered_count - original_count}")
+            else:
+                st.metric("표시된 근거", f"{filtered_count}개")
 
         st.divider()
+
+    def get_current_settings_summary(self) -> Dict:
+        """현재 설정 요약 반환"""
+        rag_settings = SettingsManager.get_rag_settings()
+        temp_min_sim = st.session_state.get('temp_min_similarity')
+
+        return {
+            "min_similarity_base": rag_settings['min_similarity'],
+            "min_similarity_current": temp_min_sim or rag_settings['min_similarity'],
+            "top_k": rag_settings['top_k'],
+            "context_window": rag_settings['context_window'],
+            "has_temp_override": temp_min_sim is not None,
+            "settings_synced": st.session_state.get('ref_system_settings_synced', False)
+        }
+
+    # 🚀 사이드바 전용 설정 관리 함수들
+    @staticmethod
+    def render_sidebar_settings_panel():
+        """사이드바 전용 설정 패널 (중복 방지)"""
+        # 🔧 사이드바 전용 설정 상태 키
+        sidebar_settings_key = 'sidebar_rag_settings_rendered'
+
+        # 이미 렌더링되었으면 건너뛰기 (중복 방지)
+        if st.session_state.get(sidebar_settings_key, False):
+            return
+
+        st.session_state[sidebar_settings_key] = True
+
+        # 사이드바 전용 간단한 설정 패널
+        st.subheader("🔧 근거 설정")
+
+        # 현재 설정 가져오기
+        rag_settings = SettingsManager.get_rag_settings()
+
+        # 간단한 정보 표시
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.metric("최소 유사도", f"{rag_settings['min_similarity']:.2f}")
+
+        with col2:
+            st.metric("근거 개수", rag_settings['top_k'])
+
+        # Settings 페이지로 이동 버튼
+        if st.button("⚙️ 설정 변경", key="sidebar_goto_settings", use_container_width=True):
+            st.switch_page("pages/99_Settings.py")
+
+        # 임시 조정 (최소한의 컨트롤)
+        if st.checkbox("🎛️ 임시 조정", key="sidebar_enable_temp_adjust"):
+            temp_min_sim = st.slider(
+                "임시 최소 유사도",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(rag_settings['min_similarity']),
+                step=0.05,
+                key="sidebar_temp_min_similarity",
+                help="현재 세션에만 적용됩니다"
+            )
+
+            # 전역 세션 상태에 저장
+            st.session_state.temp_min_similarity = temp_min_sim
+
+            # 리셋 버튼
+            if st.button("🔄 리셋", key="sidebar_reset_temp"):
+                if 'temp_min_similarity' in st.session_state:
+                    del st.session_state.temp_min_similarity
+                st.rerun()
+
+    @staticmethod
+    def clear_sidebar_settings_state():
+        """사이드바 설정 상태 초기화 (대화 초기화시 호출)"""
+        sidebar_keys = [
+            'sidebar_rag_settings_rendered',
+            'temp_min_similarity'
+        ]
+
+        for key in sidebar_keys:
+            if key in st.session_state:
+                del st.session_state[key]
 
 
 # 추가 유틸리티 함수들

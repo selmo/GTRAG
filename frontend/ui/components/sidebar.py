@@ -34,13 +34,6 @@ except ImportError:
     HAS_UPLOADER = False
 
 
-def render_sidebar(api_client):
-    """사이드바 렌더링 - 개선된 버전"""
-    with st.sidebar:
-        # 시스템 정보
-        render_system_info()
-
-
 def _sync_uploaded_files(api_client):
     """업로드된 파일 목록 동기화"""
     if ("uploaded_files" not in st.session_state or
@@ -347,16 +340,6 @@ def render_quick_actions():
                 )
 
 
-def _clear_chat_messages():
-    """대화 초기화"""
-    if 'messages' in st.session_state and st.session_state.messages:
-        st.session_state.messages = []
-        st.success("대화가 초기화되었습니다.")
-        rerun()
-    else:
-        st.info("초기화할 대화가 없습니다.")
-
-
 def _clear_system_cache():
     """시스템 캐시 초기화"""
     cleared_count = 0
@@ -442,3 +425,75 @@ def render_system_info():
 # 호환성을 위한 기존 함수명 유지
 def render_service_status(service_name: str, status_data: Dict):
     StatusIndicator.render_service_card(service_name, status_data)
+
+
+# sidebar.py에 추가할 함수들
+
+def render_rag_settings_panel():
+    """RAG 설정 패널 - 사이드바 전용 (중복 방지)"""
+    # 🔧 중복 렌더링 방지
+    if 'sidebar_rag_panel_rendered' in st.session_state:
+        return
+
+    st.session_state.sidebar_rag_panel_rendered = True
+
+    try:
+        # reference_system import (조건부)
+        from frontend.ui.components.chat.reference_system import reference_system
+
+        # 사이드바 전용 설정 패널 렌더링
+        reference_system.render_sidebar_settings_panel()
+
+    except ImportError:
+        # reference_system이 없는 경우 기본 설정 표시
+        st.subheader("🔧 근거 설정")
+        st.info("설정을 변경하려면 Settings 페이지를 이용하세요.")
+
+        if st.button("⚙️ Settings 열기", key="sidebar_basic_settings", use_container_width=True):
+            st.switch_page("pages/99_Settings.py")
+
+
+def clear_sidebar_session_state():
+    """사이드바 세션 상태 초기화"""
+    sidebar_keys = [
+        'sidebar_rag_panel_rendered',
+        'sidebar_health_checked',
+        'temp_min_similarity'
+    ]
+
+    for key in sidebar_keys:
+        if key in st.session_state:
+            del st.session_state[key]
+
+
+# 기존 render_sidebar 함수 수정
+def render_sidebar(api_client):
+    """사이드바 렌더링 - 개선된 버전 (RAG 설정 포함)"""
+    with st.sidebar:
+        # 시스템 정보
+        render_system_info()
+
+        # RAG 설정 패널 (중복 방지)
+        render_rag_settings_panel()
+
+
+# 기존 _clear_chat_messages 함수 수정
+def _clear_chat_messages():
+    """대화 초기화 - 사이드바 상태도 함께 초기화"""
+    if 'messages' in st.session_state and st.session_state.messages:
+        st.session_state.messages = []
+
+        # 🔧 사이드바 관련 상태도 초기화
+        clear_sidebar_session_state()
+
+        # reference_system 상태도 초기화
+        try:
+            from frontend.ui.components.chat.reference_system import reference_system
+            reference_system.clear_sidebar_settings_state()
+        except ImportError:
+            pass
+
+        st.success("대화가 초기화되었습니다.")
+        rerun()
+    else:
+        st.info("초기화할 대화가 없습니다.")

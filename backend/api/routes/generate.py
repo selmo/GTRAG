@@ -39,21 +39,57 @@ async def generate_answer(
     3. 검색된 문서를 컨텍스트로 하여 LLM에 답변 요청
     4. 생성된 답변과 출처 반환
     """
+    import time
+    from backend.core.logging import get_logger, log_llm_interaction
+    from backend.core.request_context import get_request_id
+
+    # 로거 설정
+    logger = get_logger("generate")
+    start_time = time.time()
+
     try:
         query_text = request.query.strip()
         if not query_text:
             raise HTTPException(400, "질문이 비어있습니다")
 
-        logger.info(f"Generating answer for query: '{query_text[:50]}...' with model: {request.model}")
+        # 요청 시작 로깅
+        request_id = get_request_id()
+        logger.info(
+            f"RAG answer generation started",
+            extra={
+                "event_type": "rag_request_start",
+                "request_id": request_id,
+                "query": query_text,
+                "query_length": len(query_text),
+                "model": request.model,
+                "temperature": request.temperature,
+                "top_k": request.top_k,
+                "search_type": request.search_type
+            }
+        )
 
         # 1. 질문을 임베딩으로 변환
+        embedding_start = time.time()
         try:
             qvec = embed_texts([query_text], prefix="query")[0]
+            embedding_time = time.time() - embedding_start
+
+            logger.info("Query embedding completed", extra={
+                "event_type": "embedding_generation",
+                "execution_time_seconds": round(embedding_time, 3),
+                "vector_dimension": len(qvec) if hasattr(qvec, '__len__') else 'unknown'
+            })
+
         except Exception as e:
-            logger.error(f"Embedding generation failed: {e}")
+            logger.error(f"Embedding generation failed: {e}", extra={
+                "event_type": "embedding_error",
+                "error": str(e),
+                "error_type": type(e).__name__
+            })
             raise HTTPException(500, f"임베딩 생성 실패: {str(e)}")
 
         # 2. 관련 문서 검색
+        search_start = time.time()
         try:
             if request.search_type == "vector":
                 hits = retriever.search(qvec, top_k=request.top_k, qdrant=qdrant)
@@ -64,11 +100,30 @@ async def generate_answer(
 
             # 점수 필터링
             filtered_hits = [hit for hit in hits if hit.score >= request.min_score]
+            search_time = time.time() - search_start
 
-            logger.info(f"Found {len(hits)} documents, {len(filtered_hits)} after filtering")
+            # 검색 결과 로깅
+            from backend.core.logging import log_search_operation
+            log_search_operation(
+                logger,
+                query=query_text,
+                search_type=request.search_type,
+                results_count=len(filtered_hits),
+                execution_time=search_time,
+                top_k=request.top_k,
+                metadata={
+                    "total_hits_before_filter": len(hits),
+                    "min_score": request.min_score,
+                    "hit_scores": [round(float(hit.score), 4) for hit in filtered_hits[:5]]  # 상위 5개 점수만
+                }
+            )
 
         except Exception as e:
-            logger.error(f"Document search failed: {e}")
+            logger.error(f"Document search failed: {e}", extra={
+                "event_type": "search_error",
+                "search_type": request.search_type,
+                "error": str(e)
+            })
             raise HTTPException(500, f"문서 검색 실패: {str(e)}")
 
         # 3. 컨텍스트 구성
@@ -94,6 +149,7 @@ async def generate_answer(
         system_prompt = request.system_prompt or default_system_prompt
 
         # 5. LLM 답변 생성
+        llm_start = time.time()
         try:
             ollama_client = get_ollama_client()
 
@@ -114,6 +170,15 @@ async def generate_answer(
 
 답변:"""
 
+            # 프롬프트 로깅
+            logger.info("LLM prompt prepared", extra={
+                "event_type": "llm_prompt_prepared",
+                "prompt_length": len(prompt),
+                "system_prompt_length": len(system_prompt),
+                "context_count": len(contexts),
+                "total_context_length": sum(len(ctx) for ctx in contexts)
+            })
+
             # Ollama 호출
             response = ollama_client.generate(
                 model=request.model,
@@ -129,13 +194,55 @@ async def generate_answer(
             if not answer:
                 answer = "죄송합니다. 답변을 생성할 수 없습니다."
 
-            logger.info(f"Answer generated successfully (length: {len(answer)})")
+            llm_time = time.time() - llm_start
+
+            # LLM 상호작용 로깅
+            log_llm_interaction(
+                logger,
+                prompt=prompt,
+                response=answer,
+                model=request.model,
+                temperature=request.temperature,
+                execution_time=llm_time,
+                metadata={
+                    "system_prompt": system_prompt,
+                    "context_documents": len(contexts),
+                    "ollama_response_metadata": {
+                        "eval_count": response.get("eval_count"),
+                        "eval_duration": response.get("eval_duration"),
+                        "load_duration": response.get("load_duration"),
+                        "prompt_eval_count": response.get("prompt_eval_count"),
+                        "prompt_eval_duration": response.get("prompt_eval_duration"),
+                        "total_duration": response.get("total_duration")
+                    }
+                }
+            )
 
         except Exception as e:
-            logger.error(f"LLM generation failed: {e}")
+            logger.error(f"LLM generation failed: {e}", extra={
+                "event_type": "llm_error",
+                "model": request.model,
+                "error": str(e)
+            })
             raise HTTPException(500, f"답변 생성 실패: {str(e)}")
 
-        # 6. 결과 반환
+        # 6. 전체 처리 시간 계산 및 결과 로깅
+        total_time = time.time() - start_time
+
+        logger.info("RAG answer generation completed", extra={
+            "event_type": "rag_request_completed",
+            "total_execution_time_seconds": round(total_time, 3),
+            "answer_length": len(answer),
+            "sources_count": len(sources),
+            "performance_breakdown": {
+                "embedding_time": round(embedding_time, 3),
+                "search_time": round(search_time, 3),
+                "llm_time": round(llm_time, 3),
+                "other_time": round(total_time - embedding_time - search_time - llm_time, 3)
+            }
+        })
+
+        # 7. 결과 반환
         return {
             "answer": answer,
             "sources": sources,
@@ -146,13 +253,25 @@ async def generate_answer(
                 "min_score": request.min_score
             },
             "model_used": request.model,
-            "query": query_text
+            "query": query_text,
+            "performance": {
+                "total_time_seconds": round(total_time, 3),
+                "embedding_time": round(embedding_time, 3),
+                "search_time": round(search_time, 3),
+                "llm_time": round(llm_time, 3)
+            }
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error in generate_answer: {e}")
+        total_time = time.time() - start_time
+        logger.error(f"Unexpected error in generate_answer: {e}", extra={
+            "event_type": "rag_request_error",
+            "total_execution_time_seconds": round(total_time, 3),
+            "error": str(e),
+            "error_type": type(e).__name__
+        }, exc_info=True)
         raise HTTPException(500, f"예기치 못한 오류: {str(e)}")
 
 

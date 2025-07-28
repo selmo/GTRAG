@@ -90,6 +90,10 @@ python-jose[cryptography]==3.3.0 # JWT 토큰 처리 (인증 시 사용)
 setuptools>=65.0.0              # 패키지 설치 도구
 wheel>=0.38.0                   # 바이너리 패키지 지원
 
+# --- Monitoring & Logging ---
+python-json-logger==2.0.7     # 구조화된 JSON 로깅
+
 # --- 최소 버전 명시 ---
 # Python >= 3.11 필요
 # CUDA 지원 시 torch GPU 버전 별도 설치 필요
+

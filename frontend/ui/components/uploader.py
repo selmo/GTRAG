@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 def render_file_uploader(api_client):
     """파일 업로더 렌더링 + 완료상태 처리 - 개선된 버전"""
     _init_upload_state()
-    st.header(f'{Constants.Icons.UPLOAD} 문서 업로드')
+    st.header(f'문서 업로드')
 
     # 완료상태면 업로드 UI 숨김
     if st.session_state.upload_complete:

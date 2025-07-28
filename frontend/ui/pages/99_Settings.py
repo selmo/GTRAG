@@ -81,7 +81,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # AI 설정 탭 - 통합된 LLM 설정
 # ===============================
 with tab1:
-    st.header(f"{Constants.Icons.AI} AI 설정")
+    st.header(f"AI 설정")
 
     # ===============================
     # 페이지 로딩 시 백엔드 설정 동기화
@@ -833,7 +833,7 @@ with tab1:
 
                     # 최종 성공 메시지
                     if resp.get("status") == "ok":
-                        st.balloons()
+                        # st.balloons()
                         st.success(f"{Constants.Icons.STATUS_OK} 모든 설정이 성공적으로 저장되었습니다!")
                         st.info("💡 설정이 ./data/rag_settings.json 파일에 저장되었습니다")
 

@@ -55,119 +55,196 @@ def is_garbled(text: str) -> bool:
     return good / len(text) < GARBLED_THRESHOLD
 
 
-def parse_pdf_with_pypdf(file_path: str, lang_hint="auto") -> List[Dict]:
-    """PyPDF를 사용한 PDF 파싱 (인코딩 개선)"""
-    try:
-        from pypdf import PdfReader
-
-        chunks = []
-
-        # 다양한 인코딩으로 파일 읽기 시도
-        for encoding in ['utf-8', 'latin-1', 'cp1252']:
-            try:
-                reader = PdfReader(file_path)
-                break
-            except Exception as e:
-                logger.warning(f"Failed to read PDF with encoding {encoding}: {e}")
-                continue
-        else:
-            raise Exception("Could not read PDF with any encoding")
-
-        for page_num, page in enumerate(reader.pages):
-            try:
-                # 텍스트 추출
-                text = page.extract_text()
-
-                if not text:
-                    logger.warning(f"No text extracted from page {page_num + 1}")
-                    continue
-
-                # 텍스트 정리
-                cleaned_text = clean_text(text)
-
-                if cleaned_text and len(cleaned_text.strip()) > 10:
-                    chunks.extend(chunk_text(
-                        cleaned_text,
-                        source=os.path.basename(file_path),
-                        page=page_num + 1,
-                        doc_type="pdf",
-                        lang=lang_hint
-                    ))
-
-            except Exception as e:
-                logger.warning(f"Failed to extract text from page {page_num + 1}: {e}")
-                continue
-
-        logger.info(f"PDF parsed with PyPDF: {len(chunks)} chunks from {len(reader.pages)} pages")
-        return chunks
-
-    except ImportError:
-        logger.error("PyPDF not available")
-        return parse_as_fallback(file_path, "PDF 문서 (PyPDF 미설치)")
-    except Exception as e:
-        logger.error(f"PDF parsing failed with PyPDF: {e}")
-        # pdfplumber로 fallback
-        return parse_pdf_with_pdfplumber(file_path, lang_hint)
-
-
 def parse_pdf_with_pdfplumber(file_path: str, lang_hint="auto") -> List[Dict]:
-    """pdfplumber를 사용한 PDF 파싱 (한국어 최적화)"""
+    """pdfplumber를 사용한 PDF 파싱 (개선된 에러 처리)"""
     try:
         import pdfplumber
 
+        # 파일 접근성 사전 확인
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"파일이 존재하지 않습니다: {file_path}")
+
+        if not os.access(file_path, os.R_OK):
+            raise PermissionError(f"파일 읽기 권한이 없습니다: {file_path}")
+
+        logger.info(f"pdfplumber로 PDF 파싱 시작: {os.path.basename(file_path)}")
         chunks = []
 
         # pdfplumber 설정 - CJK 폰트를 위한 특별 처리
         pdf_config = {
-            'dedupe_chars': True,  # 중복 문자 제거
-            'ignore_blank_chars': True,  # 빈 문자 무시
-            'use_text_flow': True,  # 텍스트 흐름 사용
+            # 'dedupe_chars': True,
+        #     'ignore_blank_chars': True,
+        #     'use_text_flow': True,
         }
 
         with pdfplumber.open(file_path, **pdf_config) as pdf:
+            total_pages = len(pdf.pages)
+            logger.info(f"PDF 총 페이지 수: {total_pages}")
+
             for page_num, page in enumerate(pdf.pages):
                 try:
-                    # 다양한 방법으로 텍스트 추출 시도
                     text = None
 
                     # 방법 1: 기본 추출
                     try:
                         text = page.extract_text()
+                        if text and len(text.strip()) > 10:
+                            logger.debug(f"페이지 {page_num + 1}: 기본 방법으로 텍스트 추출 성공")
                     except Exception as e:
-                        logger.warning(f"Default text extraction failed on page {page_num + 1}: {e}")
+                        logger.warning(f"페이지 {page_num + 1} 기본 추출 실패: {e}")
 
                     # 방법 2: 더 관대한 설정으로 추출
                     if not text or len(text.strip()) < 10:
                         try:
                             text = page.extract_text(
-                                x_tolerance=3,  # 문자 간 간격 허용도
-                                y_tolerance=3,  # 줄 간 간격 허용도
-                                layout=True,    # 레이아웃 유지
-                                x_density=7.25, # 해상도 설정
+                                x_tolerance=3,
+                                y_tolerance=3,
+                                layout=True,
+                                x_density=7.25,
                                 y_density=7.25
                             )
+                            if text and len(text.strip()) > 10:
+                                logger.debug(f"페이지 {page_num + 1}: 관대한 설정으로 텍스트 추출 성공")
                         except Exception as e:
-                            logger.warning(f"Alternative text extraction failed on page {page_num + 1}: {e}")
+                            logger.warning(f"페이지 {page_num + 1} 관대한 추출 실패: {e}")
 
-                    # 방법 3: 문자 기반 추출 (가장 안전함)
+                    # 방법 3: 문자 기반 추출
                     if not text or len(text.strip()) < 10:
                         try:
                             chars = page.chars
                             if chars:
-                                # 문자를 위치 순서대로 정렬
                                 sorted_chars = sorted(chars, key=lambda x: (x['top'], x['x0']))
                                 text = ''.join(char['text'] for char in sorted_chars)
+                                if text and len(text.strip()) > 10:
+                                    logger.debug(f"페이지 {page_num + 1}: 문자 기반 추출 성공")
                         except Exception as e:
-                            logger.warning(f"Char-based text extraction failed on page {page_num + 1}: {e}")
+                            logger.warning(f"페이지 {page_num + 1} 문자 기반 추출 실패: {e}")
 
-                    if not text:
-                        logger.warning(f"No text extracted from page {page_num + 1}")
+                    if not text or len(text.strip()) < 10:
+                        logger.warning(f"페이지 {page_num + 1}: 모든 추출 방법 실패 또는 내용 부족")
                         continue
 
-                    # 텍스트 정리
+                    # 텍스트 정리 및 검증
                     cleaned_text = clean_text(text)
 
                     if cleaned_text and len(cleaned_text.strip()) > 10:
+                        if not is_garbled(cleaned_text):
+                            chunks.extend(chunk_text(
+                                cleaned_text,
+                                source=os.path.basename(file_path),
+                                page=page_num + 1,
+                                doc_type="pdf",
+                                lang=lang_hint
+                            ))
+                            logger.debug(f"페이지 {page_num + 1}: 청크 생성 완료")
+                        else:
+                            logger.warning(f"페이지 {page_num + 1}: 깨진 텍스트 감지됨")
+                    else:
+                        logger.warning(f"페이지 {page_num + 1}: 정리된 텍스트가 너무 짧음")
+
+                except Exception as e:
+                    logger.error(f"페이지 {page_num + 1} 처리 중 오류: {e}")
+                    continue
+
+        logger.info(f"pdfplumber 파싱 완료: {len(chunks)} 청크 생성")
+
+        if not chunks:
+            raise ValueError("추출된 유효한 텍스트가 없습니다")
+
+        return chunks
+
+    except ImportError:
+        logger.error("pdfplumber 라이브러리가 설치되지 않았습니다")
+        raise ImportError("pdfplumber 라이브러리가 필요합니다")
+    except FileNotFoundError as e:
+        logger.error(f"파일 접근 오류: {e}")
+        raise
+    except PermissionError as e:
+        logger.error(f"권한 오류: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"pdfplumber PDF 파싱 실패: {type(e).__name__}: {e}")
+
+        # 구체적인 오류 유형별 메시지
+        if "corrupt" in str(e).lower() or "damaged" in str(e).lower():
+            raise ValueError("손상된 PDF 파일입니다")
+        elif "password" in str(e).lower() or "encrypted" in str(e).lower():
+            raise ValueError("암호화된 PDF 파일입니다")
+        elif "memory" in str(e).lower():
+            raise ValueError("PDF 파일이 너무 커서 메모리 부족이 발생했습니다")
+        else:
+            raise ValueError(f"PDF 처리 중 오류 발생: {str(e)}")
+
+
+def parse_pdf_with_pymupdf(file_path: str, lang_hint="auto") -> List[Dict]:
+    """PyMuPDF를 사용한 PDF 파싱 (개선된 에러 처리)"""
+    try:
+        import fitz  # PyMuPDF
+
+        # 파일 접근성 사전 확인
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"파일이 존재하지 않습니다: {file_path}")
+
+        logger.info(f"PyMuPDF로 PDF 파싱 시작: {os.path.basename(file_path)}")
+        chunks = []
+
+        try:
+            doc = fitz.open(file_path)
+        except Exception as e:
+            if "password" in str(e).lower():
+                raise ValueError("암호화된 PDF 파일입니다")
+            elif "corrupt" in str(e).lower():
+                raise ValueError("손상된 PDF 파일입니다")
+            else:
+                raise ValueError(f"PDF 파일을 열 수 없습니다: {str(e)}")
+
+        total_pages = len(doc)
+        logger.info(f"PDF 총 페이지 수: {total_pages}")
+
+        for page_num in range(total_pages):
+            try:
+                page = doc.load_page(page_num)
+                text = None
+
+                # 방법 1: 기본 텍스트 추출
+                try:
+                    text = page.get_text(
+                        "text",
+                        flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_PRESERVE_SPANS
+                    )
+                    if text and len(text.strip()) > 10:
+                        logger.debug(f"페이지 {page_num + 1}: 기본 방법으로 텍스트 추출 성공")
+                except Exception as e:
+                    logger.warning(f"페이지 {page_num + 1} 기본 추출 실패: {e}")
+
+                # 방법 2: dict 형태로 추출
+                if not text or len(text.strip()) < 10:
+                    try:
+                        text_dict = page.get_text("dict")
+                        extracted_text = []
+
+                        for block in text_dict["blocks"]:
+                            if "lines" in block:
+                                for line in block["lines"]:
+                                    for span in line["spans"]:
+                                        if span["text"].strip():
+                                            extracted_text.append(span["text"])
+
+                        text = " ".join(extracted_text)
+                        if text and len(text.strip()) > 10:
+                            logger.debug(f"페이지 {page_num + 1}: dict 방법으로 텍스트 추출 성공")
+                    except Exception as e:
+                        logger.warning(f"페이지 {page_num + 1} dict 추출 실패: {e}")
+
+                if not text or len(text.strip()) < 10:
+                    logger.warning(f"페이지 {page_num + 1}: 추출된 텍스트 없음")
+                    continue
+
+                # 텍스트 정리 및 검증
+                cleaned_text = clean_text(text)
+
+                if cleaned_text and len(cleaned_text.strip()) > 10:
+                    if not is_garbled(cleaned_text):
                         chunks.extend(chunk_text(
                             cleaned_text,
                             source=os.path.basename(file_path),
@@ -175,86 +252,114 @@ def parse_pdf_with_pdfplumber(file_path: str, lang_hint="auto") -> List[Dict]:
                             doc_type="pdf",
                             lang=lang_hint
                         ))
-
-                except Exception as e:
-                    logger.warning(f"Failed to extract text from page {page_num + 1}: {e}")
-                    continue
-
-        logger.info(f"PDF parsed with pdfplumber: {len(chunks)} chunks")
-        return chunks
-
-    except ImportError:
-        logger.error("pdfplumber not available")
-        return parse_as_fallback(file_path, "PDF 문서 (pdfplumber 미설치)")
-    except Exception as e:
-        logger.error(f"PDF parsing failed with pdfplumber: {e}")
-        # PyMuPDF로 fallback
-        return parse_pdf_with_pymupdf(file_path, lang_hint)
-
-
-def parse_pdf_with_pymupdf(file_path: str, lang_hint="auto") -> List[Dict]:
-    """PyMuPDF를 사용한 PDF 파싱 (한국어 최적화)"""
-    try:
-        import fitz  # PyMuPDF
-
-        chunks = []
-        doc = fitz.open(file_path)
-
-        for page_num in range(len(doc)):
-            try:
-                page = doc.load_page(page_num)
-
-                # 텍스트 추출 - CJK 문자를 위한 플래그 설정
-                text = page.get_text(
-                    "text",
-                    flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_PRESERVE_SPANS
-                )
-
-                # 추가적인 추출 방법 시도
-                if not text or len(text.strip()) < 10:
-                    # dict 형태로 추출해서 폰트 정보까지 활용
-                    text_dict = page.get_text("dict")
-                    extracted_text = []
-
-                    for block in text_dict["blocks"]:
-                        if "lines" in block:
-                            for line in block["lines"]:
-                                for span in line["spans"]:
-                                    if span["text"].strip():
-                                        extracted_text.append(span["text"])
-
-                    text = " ".join(extracted_text)
-
-                if not text:
-                    logger.warning(f"No text extracted from page {page_num + 1}")
-                    continue
-
-                # 텍스트 정리
-                cleaned_text = clean_text(text)
-
-                if cleaned_text and len(cleaned_text.strip()) > 10:
-                    chunks.extend(chunk_text(
-                        cleaned_text,
-                        source=os.path.basename(file_path),
-                        page=page_num + 1,
-                        doc_type="pdf",
-                        lang=lang_hint
-                    ))
+                        logger.debug(f"페이지 {page_num + 1}: 청크 생성 완료")
+                    else:
+                        logger.warning(f"페이지 {page_num + 1}: 깨진 텍스트 감지됨")
 
             except Exception as e:
-                logger.warning(f"Failed to extract text from page {page_num + 1}: {e}")
+                logger.error(f"페이지 {page_num + 1} 처리 중 오류: {e}")
                 continue
 
         doc.close()
-        logger.info(f"PDF parsed with PyMuPDF: {len(chunks)} chunks")
+        logger.info(f"PyMuPDF 파싱 완료: {len(chunks)} 청크 생성")
+
+        if not chunks:
+            raise ValueError("추출된 유효한 텍스트가 없습니다")
+
         return chunks
 
     except ImportError:
-        logger.error("PyMuPDF not available")
-        return parse_as_fallback(file_path, "PDF 문서 (PyMuPDF 미설치)")
+        logger.error("PyMuPDF(fitz) 라이브러리가 설치되지 않았습니다")
+        raise ImportError("PyMuPDF 라이브러리가 필요합니다")
+    except FileNotFoundError as e:
+        logger.error(f"파일 접근 오류: {e}")
+        raise
     except Exception as e:
-        logger.error(f"PDF parsing failed with PyMuPDF: {e}")
-        return parse_as_fallback(file_path, f"PDF 파싱 오류: {str(e)}")
+        logger.error(f"PyMuPDF PDF 파싱 실패: {type(e).__name__}: {e}")
+        raise ValueError(f"PyMuPDF 처리 중 오류: {str(e)}")
+
+
+def parse_pdf_with_pypdf(file_path: str, lang_hint="auto") -> List[Dict]:
+    """PyPDF를 사용한 PDF 파싱 (개선된 에러 처리)"""
+    try:
+        from pypdf import PdfReader
+
+        # 파일 접근성 사전 확인
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"파일이 존재하지 않습니다: {file_path}")
+
+        logger.info(f"PyPDF로 PDF 파싱 시작: {os.path.basename(file_path)}")
+        chunks = []
+
+        # 다양한 인코딩으로 파일 읽기 시도
+        reader = None
+        for encoding in ['utf-8', 'latin-1', 'cp1252']:
+            try:
+                reader = PdfReader(file_path)
+                logger.debug(f"PyPDF 파일 읽기 성공 (인코딩: {encoding})")
+                break
+            except Exception as e:
+                logger.warning(f"인코딩 {encoding}으로 읽기 실패: {e}")
+                continue
+
+        if reader is None:
+            raise ValueError("모든 인코딩으로 PDF 읽기 실패")
+
+        total_pages = len(reader.pages)
+        logger.info(f"PDF 총 페이지 수: {total_pages}")
+
+        for page_num, page in enumerate(reader.pages):
+            try:
+                # 텍스트 추출
+                text = page.extract_text()
+
+                if not text or len(text.strip()) < 10:
+                    logger.warning(f"페이지 {page_num + 1}: 추출된 텍스트 없음")
+                    continue
+
+                # 텍스트 정리 및 검증
+                cleaned_text = clean_text(text)
+
+                if cleaned_text and len(cleaned_text.strip()) > 10:
+                    if not is_garbled(cleaned_text):
+                        chunks.extend(chunk_text(
+                            cleaned_text,
+                            source=os.path.basename(file_path),
+                            page=page_num + 1,
+                            doc_type="pdf",
+                            lang=lang_hint
+                        ))
+                        logger.debug(f"페이지 {page_num + 1}: 청크 생성 완료")
+                    else:
+                        logger.warning(f"페이지 {page_num + 1}: 깨진 텍스트 감지됨")
+
+            except Exception as e:
+                logger.error(f"페이지 {page_num + 1} 추출 실패: {e}")
+                continue
+
+        logger.info(f"PyPDF 파싱 완료: {len(chunks)} 청크 생성")
+
+        if not chunks:
+            raise ValueError("추출된 유효한 텍스트가 없습니다")
+
+        return chunks
+
+    except ImportError:
+        logger.error("PyPDF 라이브러리가 설치되지 않았습니다")
+        raise ImportError("PyPDF 라이브러리가 필요합니다")
+    except FileNotFoundError as e:
+        logger.error(f"파일 접근 오류: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"PyPDF 파싱 실패: {type(e).__name__}: {e}")
+
+        # 구체적인 오류 유형별 메시지
+        if "password" in str(e).lower() or "encrypted" in str(e).lower():
+            raise ValueError("암호화된 PDF 파일입니다")
+        elif "corrupt" in str(e).lower() or "damaged" in str(e).lower():
+            raise ValueError("손상된 PDF 파일입니다")
+        else:
+            raise ValueError(f"PyPDF 처리 중 오류: {str(e)}")
 
 
 def parse_text_file(file_path: str, lang_hint="auto") -> List[Dict]:
@@ -356,15 +461,146 @@ def parse_docx(file_path: str, lang_hint="auto") -> List[Dict]:
 
 
 def parse_as_fallback(file_path: str, description: str) -> List[Dict]:
-    """폴백 처리"""
+    """개선된 폴백 처리 - 사용자 친화적 메시지와 문제 해결 힌트"""
+
+    filename = os.path.basename(file_path)
+    file_ext = os.path.splitext(file_path)[1].lower()
+
+    # 파일 정보 수집
+    file_info = {"size": 0, "readable": False, "exists": False}
+    try:
+        if os.path.exists(file_path):
+            file_info["exists"] = True
+            file_info["size"] = os.path.getsize(file_path)
+            file_info["readable"] = os.access(file_path, os.R_OK)
+    except:
+        pass
+
+    # 사용자 친화적 메시지 생성
+    if "라이브러리가 설치되지 않음" in description:
+        user_message = f"""
+📄 **{filename}** 파일이 업로드되었습니다.
+
+⚠️ **처리 제한사항**: PDF 처리 라이브러리가 설치되지 않아 내용을 추출할 수 없습니다.
+
+💡 **해결 방법**:
+- 관리자에게 PDF 처리 라이브러리 설치를 요청하세요
+- 파일을 텍스트 형태로 변환하여 다시 업로드해 보세요
+- Word 문서(.docx) 형태로 변환하여 시도해 보세요
+
+📋 **파일 정보**: {file_info['size'] / 1024:.1f}KB
+        """.strip()
+
+    elif "파일을 찾을 수 없습니다" in description:
+        user_message = f"""
+❌ **파일 업로드 오류**: {filename}
+
+파일이 제대로 업로드되지 않았습니다. 다시 시도해 주세요.
+
+💡 **해결 방법**:
+- 파일을 다시 선택하여 업로드하세요
+- 파일 이름에 특수문자가 있다면 제거하여 시도하세요
+- 브라우저를 새로고침한 후 다시 시도하세요
+        """.strip()
+
+    elif "파일이 너무 큽니다" in description:
+        user_message = f"""
+📄 **{filename}** 파일이 업로드되었습니다.
+
+⚠️ **처리 제한사항**: 파일 크기가 너무 커서 처리할 수 없습니다.
+
+💡 **해결 방법**:
+- 파일을 작은 단위로 분할하여 업로드하세요
+- PDF의 경우 페이지 수를 줄여서 시도하세요
+- 이미지 해상도를 낮춰서 다시 저장하세요
+
+📋 **파일 정보**: {file_info['size'] / 1024 / 1024:.1f}MB (제한: 100MB)
+        """.strip()
+
+    elif "빈 파일입니다" in description:
+        user_message = f"""
+📄 **{filename}** 파일이 업로드되었습니다.
+
+⚠️ **처리 제한사항**: 파일에 내용이 없습니다.
+
+💡 **확인 사항**:
+- 파일에 실제 내용이 있는지 확인하세요
+- 파일이 올바르게 저장되었는지 확인하세요
+- 다른 파일을 시도해 보세요
+        """.strip()
+
+    elif "가독 불가능한 텍스트" in description:
+        user_message = f"""
+📄 **{filename}** 파일이 업로드되었습니다.
+
+⚠️ **처리 제한사항**: PDF에서 텍스트를 추출했지만 읽을 수 없는 형태입니다.
+
+💡 **가능한 원인**:
+- 스캔된 이미지 기반 PDF (OCR 필요)
+- 특수 폰트나 인코딩 문제
+- 손상된 PDF 파일
+
+💡 **해결 방법**:
+- PDF를 텍스트 형태로 다시 저장하여 업로드하세요
+- Word 문서로 변환하여 시도하세요
+- 다른 PDF 뷰어에서 "다른 이름으로 저장"을 시도하세요
+
+📋 **파일 정보**: {file_info['size'] / 1024:.1f}KB
+        """.strip()
+
+    elif "모든 파싱 라이브러리 실패" in description:
+        user_message = f"""
+📄 **{filename}** 파일이 업로드되었습니다.
+
+⚠️ **처리 제한사항**: 여러 PDF 처리 방법을 시도했지만 모두 실패했습니다.
+
+💡 **가능한 원인**:
+- 암호화된 PDF 파일
+- 손상되거나 특수한 형식의 PDF
+- 시스템 리소스 부족
+
+💡 **해결 방법**:
+- PDF 암호를 해제한 후 다시 업로드하세요
+- 다른 PDF 뷰어에서 "인쇄 → PDF로 저장"을 시도하세요
+- 파일을 Word나 텍스트 형태로 변환하여 업로드하세요
+- 관리자에게 문의하세요
+
+🔧 **기술 정보**: {description.split(':', 1)[-1] if ':' in description else description}
+
+📋 **파일 정보**: {file_info['size'] / 1024:.1f}KB
+        """.strip()
+
+    else:
+        # 기타 오류의 경우
+        user_message = f"""
+📄 **{filename}** 파일이 업로드되었습니다.
+
+⚠️ **처리 중 문제 발생**: {description}
+
+💡 **해결 방법**:
+- 파일 형식을 확인하고 지원되는 형식(.pdf, .docx, .txt)으로 변환하세요
+- 파일 이름에서 특수문자를 제거하세요
+- 다른 파일로 시도해 보세요
+- 문제가 지속되면 관리자에게 문의하세요
+
+📋 **파일 정보**: {file_ext.upper()[1:] if file_ext else '알 수 없음'} 형식, {file_info['size'] / 1024:.1f}KB
+        """.strip()
+
     return [{
         "chunk_id": str(uuid4()),
-        "content": f"{description}가 업로드되었습니다: {os.path.basename(file_path)}",
+        "content": user_message,
         "meta": {
-            "source": os.path.basename(file_path),
+            "source": filename,
             "type": "fallback",
-            "note": description,
-            "file_size": os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            "error_type": "parsing_failed",
+            "original_error": description,
+            "file_size": file_info["size"],
+            "file_ext": file_ext,
+            "suggestions": [
+                "파일 형식 변환 시도",
+                "파일 크기 축소",
+                "관리자 문의"
+            ]
         }
     }]
 
@@ -484,65 +720,125 @@ def parse_pdf(file_input: Union[str, bytes], lang_hint: str = "auto") -> List[Di
 
 
 def parse_file_by_extension(file_path: str, lang_hint: str = "auto") -> List[Dict]:
-    """파일 확장자에 따른 파싱 - 한국어 PDF에 최적화된 단계적 시도"""
+    """파일 확장자에 따른 파싱 - 개선된 에러 처리"""
+
+    # 1단계: 파일 존재 및 접근 권한 검증
+    if not os.path.exists(file_path):
+        logger.error(f"파일이 존재하지 않습니다: {file_path}")
+        return parse_as_fallback(file_path, "파일을 찾을 수 없습니다")
+
+    if not os.access(file_path, os.R_OK):
+        logger.error(f"파일 읽기 권한이 없습니다: {file_path}")
+        return parse_as_fallback(file_path, "파일 읽기 권한이 없습니다")
+
+    try:
+        file_size = os.path.getsize(file_path)
+        if file_size == 0:
+            logger.warning(f"빈 파일입니다: {file_path}")
+            return parse_as_fallback(file_path, "빈 파일입니다")
+
+        if file_size > 100 * 1024 * 1024:  # 100MB 제한
+            logger.warning(f"파일이 너무 큽니다 ({file_size / 1024 / 1024:.1f}MB): {file_path}")
+            return parse_as_fallback(file_path, f"파일이 너무 큽니다 ({file_size / 1024 / 1024:.1f}MB)")
+
+    except Exception as e:
+        logger.error(f"파일 정보 조회 실패: {file_path}, 오류: {e}")
+        return parse_as_fallback(file_path, f"파일 정보를 읽을 수 없습니다: {str(e)}")
+
     file_ext = os.path.splitext(file_path)[1].lower()
+    logger.info(f"파일 처리 시작: {os.path.basename(file_path)} ({file_ext}, {file_size / 1024:.1f}KB)")
 
     if file_ext == '.pdf':
-        # PDF 파싱 - 여러 라이브러리를 순차적으로 시도
+        # PDF 파싱 - 여러 라이브러리를 순차적으로 시도 (개선된 에러 처리)
         successful_chunks = []
+        library_errors = []
 
-        # 1단계: pdfplumber 먼저 시도 (한국어에 가장 좋음)
+        # 1단계: pdfplumber 먼저 시도
         try:
+            logger.info("pdfplumber로 PDF 파싱 시도 중...")
             result = parse_pdf_with_pdfplumber(file_path, lang_hint)
-            # if result and any(len(chunk['content'].strip()) > 50 for chunk in result if chunk['meta']['type'] != 'fallback'):
-            if result and not is_garbled(" ".join(c['content'] for c in result)):
-                successful_chunks = result
-                logger.info(f"Successfully parsed with pdfplumber: {len(successful_chunks)} chunks")
-                return successful_chunks
+            if result and not all(chunk['meta'].get('type') == 'fallback' for chunk in result):
+                content_check = " ".join(c['content'] for c in result if c['content'])
+                if not is_garbled(content_check) and len(content_check.strip()) > 20:
+                    logger.info(f"pdfplumber 성공: {len(result)} 청크 생성")
+                    return result
+                else:
+                    library_errors.append("pdfplumber: 가독 불가능한 텍스트 추출")
+            else:
+                library_errors.append("pdfplumber: 유효한 내용 추출 실패")
+        except ImportError:
+            library_errors.append("pdfplumber: 라이브러리가 설치되지 않음")
         except Exception as e:
-            logger.warning(f"pdfplumber failed: {e}")
+            library_errors.append(f"pdfplumber: {str(e)}")
+            logger.warning(f"pdfplumber 실패: {e}")
 
         # 2단계: PyMuPDF 시도
-        if not successful_chunks:
-            try:
-                result = parse_pdf_with_pymupdf(file_path, lang_hint)
-                # if result and any(len(chunk['content'].strip()) > 50 for chunk in result if chunk['meta']['type'] != 'fallback'):
-                if result and not is_garbled(" ".join(c['content'] for c in result)):
-                    successful_chunks = result
-                    logger.info(f"Successfully parsed with PyMuPDF: {len(successful_chunks)} chunks")
-                    return successful_chunks
-            except Exception as e:
-                logger.warning(f"PyMuPDF failed: {e}")
+        try:
+            logger.info("PyMuPDF로 PDF 파싱 시도 중...")
+            result = parse_pdf_with_pymupdf(file_path, lang_hint)
+            if result and not all(chunk['meta'].get('type') == 'fallback' for chunk in result):
+                content_check = " ".join(c['content'] for c in result if c['content'])
+                if not is_garbled(content_check) and len(content_check.strip()) > 20:
+                    logger.info(f"PyMuPDF 성공: {len(result)} 청크 생성")
+                    return result
+                else:
+                    library_errors.append("PyMuPDF: 가독 불가능한 텍스트 추출")
+            else:
+                library_errors.append("PyMuPDF: 유효한 내용 추출 실패")
+        except ImportError:
+            library_errors.append("PyMuPDF: 라이브러리가 설치되지 않음")
+        except Exception as e:
+            library_errors.append(f"PyMuPDF: {str(e)}")
+            logger.warning(f"PyMuPDF 실패: {e}")
 
         # 3단계: PyPDF 시도
-        if not successful_chunks:
-            try:
-                result = parse_pdf_with_pypdf(file_path, lang_hint)
-                # if result and any(len(chunk['content'].strip()) > 50 for chunk in result if chunk['meta']['type'] != 'fallback'):
-                if result and not is_garbled(" ".join(c['content'] for c in result)):
-                    successful_chunks = result
-                    logger.info(f"Successfully parsed with PyPDF: {len(successful_chunks)} chunks")
-                    return successful_chunks
-            except Exception as e:
-                logger.warning(f"PyPDF failed: {e}")
+        try:
+            logger.info("PyPDF로 PDF 파싱 시도 중...")
+            result = parse_pdf_with_pypdf(file_path, lang_hint)
+            if result and not all(chunk['meta'].get('type') == 'fallback' for chunk in result):
+                content_check = " ".join(c['content'] for c in result if c['content'])
+                if not is_garbled(content_check) and len(content_check.strip()) > 20:
+                    logger.info(f"PyPDF 성공: {len(result)} 청크 생성")
+                    return result
+                else:
+                    library_errors.append("PyPDF: 가독 불가능한 텍스트 추출")
+            else:
+                library_errors.append("PyPDF: 유효한 내용 추출 실패")
+        except ImportError:
+            library_errors.append("PyPDF: 라이브러리가 설치되지 않음")
+        except Exception as e:
+            library_errors.append(f"PyPDF: {str(e)}")
+            logger.warning(f"PyPDF 실패: {e}")
 
-        # 모든 시도가 실패한 경우
-        if not successful_chunks:
-            logger.error("All PDF parsing libraries failed")
-            return parse_as_fallback(file_path, "PDF 문서 (모든 파싱 라이브러리 실패)")
+        # 모든 시도가 실패한 경우 - 상세한 오류 정보 제공
+        error_summary = "; ".join(library_errors)
+        logger.error(f"PDF 파싱 완전 실패: {error_summary}")
 
-        return successful_chunks
+        return parse_as_fallback(
+            file_path,
+            f"PDF 파싱 실패 - 시도한 모든 라이브러리에서 오류 발생: {error_summary}"
+        )
 
     elif file_ext in ['.docx', '.doc']:
-        return parse_docx(file_path, lang_hint)
+        try:
+            return parse_docx(file_path, lang_hint)
+        except Exception as e:
+            logger.error(f"Word 문서 파싱 실패: {e}")
+            return parse_as_fallback(file_path, f"Word 문서 파싱 오류: {str(e)}")
+
     elif file_ext in ['.txt', '.md', '.rst']:
-        return parse_text_file(file_path, lang_hint)
+        try:
+            return parse_text_file(file_path, lang_hint)
+        except Exception as e:
+            logger.error(f"텍스트 파일 파싱 실패: {e}")
+            return parse_as_fallback(file_path, f"텍스트 파일 파싱 오류: {str(e)}")
     else:
         # 기본적으로 텍스트로 처리 시도
         try:
+            logger.info(f"알 수 없는 확장자 {file_ext}, 텍스트로 시도")
             return parse_text_file(file_path, lang_hint)
-        except:
-            return parse_as_fallback(file_path, f"알 수 없는 파일 형식 ({file_ext})")
+        except Exception as e:
+            return parse_as_fallback(file_path, f"알 수 없는 파일 형식 ({file_ext}): {str(e)}")
 
 
 # 테스트 함수

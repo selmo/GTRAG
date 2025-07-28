@@ -69,43 +69,144 @@ def render_search_interface(api_client):
 
 
 def perform_search(api_client, query: str, top_k: int, min_score: float, show_preview: bool):
-    """검색 실행"""
+    """개선된 검색 실행 - 에러 처리 및 사용자 피드백 강화"""
     if not query:
         st.warning("검색어를 입력해주세요.")
         return
 
     with st.spinner("검색 중..."):
         try:
+            # API 클라이언트 유효성 검사
+            if not api_client:
+                st.error("❌ 검색 서비스에 연결할 수 없습니다.")
+                st.info("💡 설정 페이지에서 서버 연결 상태를 확인해주세요.")
+                return
+
+            # 검색 실행
             results_raw = api_client.search(query, top_k)
+
+            # 결과 처리
             if isinstance(results_raw, dict):
                 results = results_raw.get("results", results_raw.get("items", []))
             else:
                 results = results_raw
 
+            # 결과가 없는 경우 처리
+            if not results:
+                st.warning("🔍 검색 결과가 없습니다.")
+
+                # 검색 개선 제안
+                with st.expander("💡 검색 개선 제안", expanded=True):
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        st.markdown("**검색어 수정 제안:**")
+                        st.markdown("- 더 짧은 키워드 사용")
+                        st.markdown("- 유사한 단어로 변경")
+                        st.markdown("- 한글/영어 전환")
+
+                    with col2:
+                        st.markdown("**설정 조정:**")
+                        if min_score > 0.3:
+                            st.markdown(f"- 최소 유사도를 낮춰보세요 (현재: {min_score})")
+                        if top_k < 10:
+                            st.markdown(f"- 검색 결과 수를 늘려보세요 (현재: {top_k}개)")
+                        st.markdown("- 다른 검색 모드를 시도해보세요")
+
+                # 대체 검색어 제안
+                suggest_alternative_searches(query)
+                return
+
             # 최소 점수 필터링
             filtered_results = [r for r in results if r.get('score', 0) >= min_score]
 
-            if filtered_results:
-                st.success(f"{len(filtered_results)}개의 관련 문서를 찾았습니다.")
+            if not filtered_results:
+                st.warning(f"❌ 최소 유사도 {min_score} 이상인 결과가 없습니다.")
 
-                # 검색 기록 저장
-                save_search_history(query, len(filtered_results))
+                # 유사도가 낮은 결과들 정보 제공
+                low_score_results = [r for r in results if r.get('score', 0) < min_score]
+                if low_score_results:
+                    best_score = max(r.get('score', 0) for r in low_score_results)
+                    st.info(f"💡 가장 높은 유사도: {best_score:.3f} (기준: {min_score})")
 
-                # 결과 표시
-                render_search_results_improved(filtered_results, show_preview, query)
+                    if st.button(f"🔍 유사도 {best_score:.1f} 이상 결과 보기", key="show_lower_score"):
+                        render_search_results_improved(low_score_results, show_preview, query)
+                        show_result_analytics(low_score_results)
 
-                # 결과 분석
-                show_result_analytics(filtered_results)
-
-            else:
-                st.warning("검색 결과가 없습니다. 다른 검색어를 시도해보세요.")
-
-                # 검색 제안
+                # 검색 개선 제안
                 suggest_alternative_searches(query)
+                return
+
+            # 성공적인 검색 결과 처리
+            success_msg = f"✅ {len(filtered_results)}개의 관련 문서를 찾았습니다."
+
+            # 필터링된 결과 정보 추가
+            if len(results) > len(filtered_results):
+                success_msg += f" (전체 {len(results)}개 중 유사도 {min_score} 이상)"
+
+            st.success(success_msg)
+
+            # 검색 기록 저장
+            save_search_history(query, len(filtered_results))
+
+            # 결과 표시
+            render_search_results_improved(filtered_results, show_preview, query)
+
+            # 결과 분석
+            show_result_analytics(filtered_results)
+
+            # 문서 처리 상태 확인 및 알림
+            check_and_notify_fallback_results(filtered_results)
+
+        except ConnectionError:
+            st.error("❌ 검색 서버에 연결할 수 없습니다.")
+            st.info("💡 네트워크 연결 상태를 확인하거나 잠시 후 다시 시도해주세요.")
+
+        except TimeoutError:
+            st.error("❌ 검색 요청 시간이 초과되었습니다.")
+            st.info("💡 더 간단한 검색어로 다시 시도해주세요.")
 
         except Exception as e:
-            st.error(f"검색 오류: {str(e)}")
+            error_msg = str(e)
+            st.error(f"❌ 검색 중 오류가 발생했습니다: {error_msg}")
 
+            # 상세 오류 정보 (디버깅용)
+            with st.expander("🔧 상세 오류 정보"):
+                st.code(f"Error Type: {type(e).__name__}")
+                st.code(f"Error Message: {error_msg}")
+                st.code(f"Query: {query}")
+                st.code(f"Parameters: top_k={top_k}, min_score={min_score}")
+
+            # 문제 해결 제안
+            st.markdown("**💡 해결 방법:**")
+            st.markdown("- 페이지를 새로고침하여 다시 시도")
+            st.markdown("- 더 간단한 검색어 사용")
+            st.markdown("- 설정 페이지에서 서버 상태 확인")
+            st.markdown("- 관리자에게 문의")
+
+
+def check_and_notify_fallback_results(results):
+    """fallback 결과 확인 및 사용자 알림"""
+    fallback_results = [r for r in results if r.get('metadata', {}).get('type') == 'fallback']
+
+    if fallback_results:
+        with st.expander(f"⚠️ 처리 제한 문서 ({len(fallback_results)}개)", expanded=False):
+            st.warning("일부 문서는 완전히 처리되지 않았습니다:")
+
+            for result in fallback_results:
+                metadata = result.get('metadata', {})
+                filename = metadata.get('source', '알 수 없는 파일')
+                error_type = metadata.get('original_error', '알 수 없는 오류')
+
+                st.markdown(f"**📄 {filename}**")
+                st.caption(f"문제: {error_type}")
+
+                # 해결 제안
+                suggestions = metadata.get('suggestions', [])
+                if suggestions:
+                    st.caption(f"제안: {', '.join(suggestions)}")
+
+            st.info("💡 이런 문서들은 파일 형식을 변환하거나 관리자에게 문의하여 해결할 수 있습니다.")
 
 def render_search_results_improved(results: List[Dict], show_preview: bool, query: str):
     """개선된 검색 결과 렌더링"""

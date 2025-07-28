@@ -85,7 +85,7 @@ class ChatInputHandler:
                 answer_placeholder = st.empty()
                 status = st.empty()
 
-                show_simple_loading(f"🤖 '{settings['model']}'으로 답변 생성 중...", status)
+                show_simple_loading(f"'{settings['model']}'으로 답변 생성 중...", status)
 
                 with ErrorContext("RAG 답변 생성") as ctx:
                     try:
