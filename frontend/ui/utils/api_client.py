@@ -225,6 +225,86 @@ class APIClient:
                 "put_test": "failed"
             }
 
+    # APIClient 클래스에 추가할 메서드
+    @retry_on_failure()
+    def request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
+        """
+        범용 HTTP 요청 메서드 - 온톨로지 API 호환성 제공
+
+        Args:
+            method: HTTP 메서드 (GET, POST, PUT, DELETE)
+            endpoint: API 엔드포인트
+            **kwargs: 추가 요청 매개변수 (json, params, headers 등)
+
+        Returns:
+            API 응답 딕셔너리
+        """
+        try:
+            logger.info(f"🔗 API 요청: {method} {endpoint}")
+
+            # _make_request를 통해 실제 HTTP 요청 실행
+            response = self._make_request(method, endpoint, **kwargs)
+
+            # JSON 응답 파싱
+            if response.content:
+                try:
+                    result = response.json()
+                    logger.debug(f"📥 응답 파싱 성공: {type(result)}")
+                    return result
+                except ValueError as e:
+                    logger.warning(f"⚠️ JSON 파싱 실패: {str(e)}")
+                    # JSON이 아닌 응답의 경우 텍스트 반환
+                    return {"raw_response": response.text, "status_code": response.status_code}
+            else:
+                # 빈 응답 (예: 204 No Content)
+                return {"status_code": response.status_code, "message": "No content"}
+
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"❌ HTTP 오류: {method} {endpoint}")
+
+            # 오류 응답 파싱 시도
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {
+                        "error": True,
+                        "status_code": e.response.status_code,
+                        "message": error_data.get("detail", str(e)),
+                        **error_data
+                    }
+                except ValueError:
+                    return {
+                        "error": True,
+                        "status_code": e.response.status_code,
+                        "message": e.response.text or str(e)
+                    }
+            else:
+                return {"error": True, "message": str(e)}
+
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"🔌 연결 오류: {self.base_url}")
+            return {
+                "error": True,
+                "message": f"서버에 연결할 수 없습니다: {self.base_url}",
+                "type": "connection_error"
+            }
+
+        except requests.exceptions.Timeout as e:
+            logger.error(f"⏰ 타임아웃: {method} {endpoint}")
+            return {
+                "error": True,
+                "message": f"요청 시간 초과 ({self.timeout}초)",
+                "type": "timeout"
+            }
+
+        except Exception as e:
+            logger.error(f"💥 예기치 못한 오류: {type(e).__name__}: {str(e)}")
+            return {
+                "error": True,
+                "message": f"API 요청 중 오류 발생: {str(e)}",
+                "type": "unexpected_error"
+            }
+
     # ===============================
     # 기타 메서드들 (기존과 동일)
     # ===============================

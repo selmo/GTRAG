@@ -177,6 +177,15 @@ def save_settings(new_settings: Dict[str, Any]) -> None:
         raise
 
 
+def get_default_keyword_methods() -> str:
+    """설정에서 기본 키워드 추출 방식 가져오기"""
+    try:
+        dynamic = _load_settings()
+        return dynamic.get("ontology", {}).get("keyword_method", "keybert")
+    except:
+        return "keybert"
+
+
 def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
     """
     두 딕셔너리를 재귀적으로 병합합니다.

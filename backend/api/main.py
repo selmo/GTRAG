@@ -4,7 +4,7 @@ FastAPI 애플리케이션 팩토리 – 라우터 모듈별 분리 버전
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import documents, health, search, models, settings, generate
+from backend.api.routes import documents, health, search, models, settings, generate, ontology
 
 __all__ = ["app"]
 
@@ -61,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router, tags=["models"])
     app.include_router(settings.router, tags=["settings"])
     app.include_router(generate.router, tags=["generate"])
+    app.include_router(ontology.router, tags=["ontology"])
 
     # ───────────────────── 애플리케이션 이벤트 ──────────────────────
     @app.on_event("startup")

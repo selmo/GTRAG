@@ -41,19 +41,19 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         # 요청 바디 크기 계산
         request_size = await self._get_request_size(request)
 
-        # 요청 시작 로깅
-        self.logger.info(
-            f"HTTP request started: {method} {url}",
-            extra={
-                "event_type": "http_request_start",
-                "request_id": request_id,
-                "method": method,
-                "url": url,
-                "client_ip": client_ip,
-                "user_agent": user_agent,
-                "request_size_bytes": request_size
-            }
-        )
+        # # 요청 시작 로깅
+        # self.logger.info(
+        #     f"HTTP request started: {method} {url}",
+        #     extra={
+        #         "event_type": "http_request_start",
+        #         "request_id": request_id,
+        #         "method": method,
+        #         "url": url,
+        #         "client_ip": client_ip,
+        #         "user_agent": user_agent,
+        #         "request_size_bytes": request_size
+        #     }
+        # )
 
         # 요청 처리
         try:
@@ -65,22 +65,22 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             # 응답 크기 계산
             response_size = await self._get_response_size(response)
 
-            # HTTP 요청/응답 로깅
-            log_http_request(
-                self.logger,
-                method=method,
-                url=url,
-                status_code=response.status_code,
-                response_time=process_time,
-                request_size=request_size,
-                response_size=response_size,
-                client_ip=client_ip,
-                user_agent=user_agent,
-                metadata={
-                    "request_id": request_id,
-                    "response_headers": dict(response.headers)
-                }
-            )
+            # # HTTP 요청/응답 로깅
+            # log_http_request(
+            #     self.logger,
+            #     method=method,
+            #     url=url,
+            #     status_code=response.status_code,
+            #     response_time=process_time,
+            #     request_size=request_size,
+            #     response_size=response_size,
+            #     client_ip=client_ip,
+            #     user_agent=user_agent,
+            #     metadata={
+            #         "request_id": request_id,
+            #         "response_headers": dict(response.headers)
+            #     }
+            # )
 
             # 응답 헤더에 요청 ID 추가
             response.headers["X-Request-ID"] = request_id

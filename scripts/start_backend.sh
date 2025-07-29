@@ -146,12 +146,14 @@ if [[ $ENV_LOADED == false ]]; then
 fi
 
 # 기본 환경변수 설정
+# 기본 환경변수 설정 (line ~95 근처)
 export API_PORT=${API_PORT:-18000}
 export API_HOST=${API_HOST:-"0.0.0.0"}
 export QDRANT_PORT=${QDRANT_PORT:-6333}
 export REDIS_PORT=${REDIS_PORT:-6379}
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
 export LOG_LEVEL=${LOG_LEVEL:-"INFO"}
+export TOKENIZERS_PARALLELISM=${TOKENIZERS_PARALLELISM:-"false"}  # ← 추가
 
 log_info "환경변수 설정 완료"
 echo "   API_PORT: $API_PORT"
@@ -371,6 +373,34 @@ echo "   핵심 패키지 버전:"
 echo "   - FastAPI: $(python -c "import fastapi; print(fastapi.__version__)" 2>/dev/null || echo "설치되지 않음")"
 echo "   - Uvicorn: $(python -c "import uvicorn; print(uvicorn.__version__)" 2>/dev/null || echo "설치되지 않음")"
 echo "   - Celery: $(python -c "import celery; print(celery.__version__)" 2>/dev/null || echo "설치되지 않음")"
+
+
+# 8-1. 온톨로지 패키지 특별 확인 (추가)
+log_info "온톨로지 패키지 확인..."
+
+ontology_packages=("keybert" "spacy" "sklearn" "nltk")
+missing_ontology=()
+
+for package in "${ontology_packages[@]}"; do
+    if ! python -c "import $package" &> /dev/null; then
+        missing_ontology+=("$package")
+    fi
+done
+
+if [[ ${#missing_ontology[@]} -gt 0 ]]; then
+    log_warning "온톨로지 패키지 누락: ${missing_ontology[*]}"
+    log_info "온톨로지 패키지 설치 중..."
+
+    pip install keybert spacy scikit-learn nltk || {
+        log_error "온톨로지 패키지 설치 실패"
+    }
+
+    # spaCy 모델 설치 시도
+    log_info "spaCy 언어 모델 설치 중..."
+    python -m spacy download ko_core_news_sm 2>/dev/null || log_warning "한국어 모델 설치 실패"
+    python -m spacy download en_core_web_sm 2>/dev/null || log_warning "영어 모델 설치 실패"
+fi
+
 
 # 9. 로그 디렉토리 생성
 log_info "로그 디렉토리 설정..."
